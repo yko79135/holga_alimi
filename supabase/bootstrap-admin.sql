@@ -2,4 +2,4 @@
 -- 2) Replace the email below, then run this in SQL Editor.
 update public.profiles
 set role = 'admin', full_name = '학교 관리자'
-where email = 'admin@example.com';
+where email = 'yko79135@gmail.com';
