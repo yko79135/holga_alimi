@@ -10,6 +10,18 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: schoolName, statusBarStyle: "default" },
   icons: { apple: "/apple-touch-icon.svg" },
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+      noarchive: true,
+      nosnippet: true,
+    },
+  },
 };
 
 export const viewport: Viewport = { themeColor: "#244f59" };
