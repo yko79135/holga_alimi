@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -43,7 +44,14 @@ export default function LoginForm() {
 
   return (
     <form className="login-card" onSubmit={submit}>
-      <div className="brand-mark">학</div>
+      <Image
+        className="login-logo"
+        src="/branding/holy-guide-logo.png"
+        alt="Holy Guide Christian School logo"
+        width={450}
+        height={428}
+        priority
+      />
       <p className="eyebrow">SCHOOL FAMILY PORTAL</p>
       <h1>{process.env.NEXT_PUBLIC_SCHOOL_NAME || "우리학교 학부모 포털"}</h1>
       <p className="muted">학교에서 발송한 가정통신문과 자녀별 안내를 확인하세요.</p>
