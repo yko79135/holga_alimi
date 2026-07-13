@@ -5,7 +5,7 @@ export default function LoginPage() {
     <main className="login-shell">
       <div className="login-copy">
         <span className="pill inverted">안전한 개별 소통</span>
-        <h2>홀리가이드기독학교<br />알리미 서비스</h2>
+        <h2>홀리가이드기독학교<br />학부모 포털</h2>
         <p>가정통신문, 학교 공지, 개별 경고 공지, 등</p>
       </div>
       <LoginForm />
