@@ -20,7 +20,7 @@ export default function LoginForm() {
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
-      setError("이메일 또는 비밀번호를 확인해주세요.");
+      setError(signInError.message);
       setLoading(false);
       return;
     }
