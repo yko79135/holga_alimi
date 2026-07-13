@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import AdminPanel from "@/components/AdminPanel";
+import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
 type Profile = { id: string; full_name: string; email: string; role: string };
@@ -11,7 +12,10 @@ type Notice = {
   requires_confirmation: boolean; published_at: string;
   notice_students?: Array<{ students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null }>;
   acknowledgements?: Array<{ read_at: string | null; confirmed_at: string | null; parent_reply: string | null; profiles?: { full_name: string } | null }>;
+  notice_attachments?: Attachment[];
 };
+
+type Attachment = { id: string; original_filename: string; size_bytes: number };
 
 const typeLabels: Record<string, string> = { newsletter:"가정통신문", warning:"학생 경고", guidance:"생활지도", consultation:"상담 안내", urgent:"긴급 공지" };
 
@@ -21,6 +25,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [studentName, setStudentName] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
@@ -34,7 +40,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
     const supabase = createClient();
     const [studentResult, noticeResult, profileResult] = await Promise.all([
       supabase.from("students").select("id,name,grade,homeroom,active").order("grade").order("name"),
-      supabase.from("notices").select(`id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false }),
+      supabase.from("notices").select(`id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false }),
       supabase.from("profiles").select("id,full_name,email,role").order("created_at", { ascending:false }),
     ]);
     setStudents(studentResult.data || []);
@@ -51,37 +57,36 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   async function sendNotice(event: FormEvent) {
     event.preventDefault();
     setMessage("");
-    if (form.targetScope === "grade" && !form.targetGrade) return setMessage("대상 학년을 선택해주세요.");
-    if (form.targetScope === "student" && !form.studentId) return setMessage("대상 학생을 선택해주세요.");
+    setErrorMessage("");
+    if (form.targetScope === "grade" && !form.targetGrade) return setErrorMessage("대상 학년을 선택해주세요.");
+    if (form.targetScope === "student" && !form.studentId) return setErrorMessage("대상 학생을 선택해주세요.");
+    if (files.length > MAX_NOTICE_ATTACHMENTS) return setErrorMessage("PDF는 최대 5개까지 첨부할 수 있습니다.");
     setLoading(true);
-    const supabase = createClient();
-    const { data: notice, error } = await supabase.from("notices").insert({
-      type: form.type,
-      title: form.title.trim(),
-      body: form.body.trim(),
-      target_scope: form.targetScope,
-      target_grade: form.targetScope === "grade" ? form.targetGrade : null,
-      requires_confirmation: form.requiresConfirmation,
-      created_by: userId,
-      published_at: new Date().toISOString(),
-    }).select("id").single();
-
-    if (error || !notice) {
-      setMessage(error?.message || "알림 저장에 실패했습니다.");
+    try {
+      const attachments = [];
+      for (const file of files) {
+        if (file.type !== "application/pdf" || !/\.pdf$/i.test(file.name) || file.size <= 0 || file.size > 20 * 1024 * 1024) throw new Error(`${file.name}: PDF(20MB 이하)만 첨부할 수 있습니다.`);
+        const prep = await fetch("/api/attachments/upload-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size }) });
+        const signed = await prep.json();
+        if (!prep.ok) throw new Error(signed.error || "첨부 업로드 준비에 실패했습니다.");
+        const supabase = createClient();
+        const { error: uploadError } = await supabase.storage.from("notice-attachments").uploadToSignedUrl(signed.path, signed.token, file, { contentType: "application/pdf", upsert: false });
+        if (uploadError) throw new Error(`${file.name}: 업로드에 실패했습니다.`);
+        attachments.push({ storagePath: signed.path, originalFilename: signed.originalFilename, mimeType: file.type, sizeBytes: file.size });
+      }
+      const res = await fetch("/api/notices/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, attachments }) });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "게시 중 오류가 발생했습니다.");
+      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false });
+      setFiles([]);
+      setMessage(`${result.message} 앱 알림 ${result.push?.sent || 0}건 전송 · 알림 미등록 사용자 ${result.push?.unsubscribed || 0}명 · 실패 ${result.push?.failed || 0}건`);
+      await load();
+      setTab("notices");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "알림 발송에 실패했습니다.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (form.targetScope === "student") {
-      const { error: linkError } = await supabase.from("notice_students").insert({ notice_id: notice.id, student_id: form.studentId });
-      if (linkError) setMessage("알림은 생성되었지만 학생 연결에 실패했습니다.");
-    }
-
-    setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false });
-    setMessage("알림을 발송했습니다.");
-    setLoading(false);
-    await load();
-    setTab("notices");
   }
 
   async function addStudent(event: FormEvent) {
@@ -130,9 +135,13 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
           </div>
           <label>제목</label><input value={form.title} onChange={(e) => setForm({...form,title:e.target.value})} required placeholder="예: 수업 태도 관련 생활지도 안내" />
           <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder="학부모에게 전달할 내용을 작성하세요." />
+
+          <label>PDF 첨부 (최대 5개, 각 20MB 이하)</label><input type="file" accept="application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, MAX_NOTICE_ATTACHMENTS))} />
+          {files.length > 0 && <div className="attachment-list">{files.map((file, index) => <div className="attachment-item" key={`${file.name}-${index}`}><span>📎 {file.name} · {formatBytes(file.size)}</span><button type="button" className="secondary" onClick={() => setFiles(files.filter((_, i) => i !== index))}>삭제</button></div>)}</div>}
           <label className="switch-line"><input type="checkbox" checked={form.requiresConfirmation} onChange={(e) => setForm({...form,requiresConfirmation:e.target.checked})} /><span>학부모의 ‘확인 완료’ 응답을 요청합니다.</span></label>
           <button className="primary" disabled={loading}>{loading ? "발송 중..." : "알림 발송"}</button>
-          {message && <p className="success-message">{message}</p>}
+          {message && <p role="status" className="success-message">{message}</p>}
+          {errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
         </form>
       )}
 
@@ -145,6 +154,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
               return <article className="sent-card" key={notice.id}>
                 <div className="sent-top"><div><span className={`tag ${notice.type}`}>{typeLabels[notice.type]}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div><div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div></div>
                 <p className="sent-preview">{notice.body}</p>
+                {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
                 {replies.length > 0 && <div className="reply-log"><strong>학부모 답변</strong>{replies.map((ack,index) => <p key={index}>“{ack.parent_reply}”</p>)}</div>}
               </article>;
             })}

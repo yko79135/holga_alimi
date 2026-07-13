@@ -23,6 +23,7 @@ export default function Header({ name, role }: { name: string; role: string }) {
       </div>
       <div className="topbar-actions">
         <span className="pill">{roleLabel}</span>
+        <button className="secondary" onClick={() => router.push("/account")}>내 계정</button>
         <button className="secondary" onClick={logout}>로그아웃</button>
       </div>
     </header>

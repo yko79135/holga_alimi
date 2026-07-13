@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatBytes } from "@/lib/notice-security";
+import { useSearchParams } from "next/navigation";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null };
 type Ack = {
@@ -10,6 +12,7 @@ type Ack = {
   parent_reply: string | null;
   replied_at: string | null;
 };
+type Attachment = { id: string; original_filename: string; size_bytes: number };
 type Notice = {
   id: string;
   type: string;
@@ -21,6 +24,7 @@ type Notice = {
   published_at: string;
   notice_students?: Array<{ student_id: string; students: Student | Student[] | null }>;
   acknowledgements?: Ack[];
+  notice_attachments?: Attachment[];
 };
 
 const typeLabels: Record<string, string> = {
@@ -32,6 +36,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function ParentDashboard({ userId }: { userId: string }) {
+  const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selected, setSelected] = useState<Notice | null>(null);
@@ -51,6 +56,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         .select(`
           id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,
           notice_students(student_id,students(id,name,grade,homeroom)),
+          notice_attachments(id,original_filename,size_bytes),
           acknowledgements(read_at,confirmed_at,parent_reply,replied_at)
         `)
         .order("published_at", { ascending: false }),
@@ -66,6 +72,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   }, [userId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const id = searchParams.get("notice"); if (id && notices.length && !selected) { const n = notices.find((notice) => notice.id === id); if (n) void openNotice(n); } }, [searchParams, notices, selected]);
 
   const unreadCount = useMemo(
     () => notices.filter((notice) => !notice.acknowledgements?.[0]?.read_at).length,
@@ -197,6 +204,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
             <h2>{selected.title}</h2>
             <p className="modal-meta">대상: {recipientText(selected)} · {new Date(selected.published_at).toLocaleString("ko-KR")}</p>
             <div className="notice-body">{selected.body}</div>
+            {!!selected.notice_attachments?.length && <div className="attachment-list">{selected.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
 
             {selected.requires_confirmation && (
               <button className="primary" onClick={confirmNotice} disabled={Boolean(selected.acknowledgements?.[0]?.confirmed_at)}>
