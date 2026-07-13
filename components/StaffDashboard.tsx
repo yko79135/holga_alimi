@@ -175,7 +175,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
         </section>
       )}
 
-      {tab === "accounts" && role === "admin" && <AdminPanel onChanged={load} />}
+      {tab === "accounts" && role === "admin" && <AdminPanel userId={userId} onChanged={load} />}
     </div>
   );
 }

@@ -29,13 +29,13 @@ async function parseApiResponse(response: Response) {
   const text = await response.text();
   if (!text) return {};
   try {
-    return JSON.parse(text) as { error?: string; account?: CreatedAccount; accounts?: AccountSummary[] };
+    return JSON.parse(text) as { error?: string; message?: string; account?: CreatedAccount; accounts?: AccountSummary[] };
   } catch {
     throw new Error("서버 응답을 읽을 수 없습니다. 잠시 후 다시 시도해주세요.");
   }
 }
 
-export default function AdminPanel({ onChanged }: { onChanged: () => void }) {
+export default function AdminPanel({ userId, onChanged }: { userId: string; onChanged: () => void }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [email, setEmail] = useState("");
@@ -49,6 +49,11 @@ export default function AdminPanel({ onChanged }: { onChanged: () => void }) {
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [repairRoles, setRepairRoles] = useState<Record<string, Role>>({});
   const [repairingId, setRepairingId] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<AccountSummary | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<Feedback | null>(null);
 
   const loadAccounts = useCallback(async () => {
     setDirectoryLoading(true);
@@ -121,6 +126,46 @@ export default function AdminPanel({ onChanged }: { onChanged: () => void }) {
     setStudentIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
 
+
+  function closeResetModal() {
+    setResetTarget(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setResetFeedback(null);
+  }
+
+  async function resetPassword(event: FormEvent) {
+    event.preventDefault();
+    if (!resetTarget || resetSubmitting) return;
+    setFeedback(null);
+    setResetFeedback(null);
+    if (newPassword.length < 8 || confirmPassword.length < 8) {
+      setResetFeedback({ type: "error", text: "새 비밀번호는 8자 이상이어야 합니다." });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetFeedback({ type: "error", text: "새 비밀번호가 서로 일치하지 않습니다." });
+      return;
+    }
+
+    setResetSubmitting(true);
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(resetTarget.id)}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword, confirmPassword }),
+      });
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result.error || "비밀번호 재설정에 실패했습니다.");
+      setFeedback({ type: "success", text: result.message || "비밀번호를 재설정했습니다." });
+      closeResetModal();
+    } catch (error) {
+      setResetFeedback({ type: "error", text: error instanceof Error ? error.message : "비밀번호 재설정에 실패했습니다." });
+    } finally {
+      setResetSubmitting(false);
+    }
+  }
+
   return (
     <section className="panel-grid">
       <form className="form-panel" onSubmit={submit}>
@@ -180,12 +225,41 @@ export default function AdminPanel({ onChanged }: { onChanged: () => void }) {
                     <button type="button" className="secondary" onClick={() => repairAccount(account)} disabled={repairingId === account.id}>{repairingId === account.id ? "저장 중..." : "프로필 복구"}</button>
                   </div>
                 )}
+                {account.id !== userId && account.authExists && (
+                  <div className="account-actions">
+                    <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button>
+                  </div>
+                )}
               </article>
             );
           })}
           {!accounts.length && <div className="empty-state">표시할 계정이 없습니다.</div>}
         </div>
       </section>
+
+      {resetTarget && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !resetSubmitting) closeResetModal(); }}>
+          <form className="modal-card reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-password-title" onSubmit={resetPassword}>
+            <button type="button" className="modal-close" aria-label="닫기" onClick={closeResetModal} disabled={resetSubmitting}>×</button>
+            <p className="eyebrow">PASSWORD RESET</p>
+            <h2 id="reset-password-title">비밀번호 재설정</h2>
+            <dl className="reset-target-details">
+              <div><dt>대상 이름</dt><dd>{resetTarget.fullName || "이름 없음"}</dd></div>
+              <div><dt>대상 이메일</dt><dd>{resetTarget.email}</dd></div>
+              <div><dt>대상 권한</dt><dd>{resetTarget.role ? roleLabels[resetTarget.role] : "권한 없음"}</dd></div>
+            </dl>
+            <label htmlFor="new-password">새 임시 비밀번호</label>
+            <input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required autoFocus />
+            <label htmlFor="confirm-password">새 임시 비밀번호 확인</label>
+            <input id="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            {resetFeedback && <p role="alert" className={resetFeedback.type === "success" ? "success-message" : "form-error"}>{resetFeedback.text}</p>}
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={closeResetModal} disabled={resetSubmitting}>취소</button>
+              <button type="submit" className="primary" disabled={resetSubmitting}>{resetSubmitting ? "재설정 중..." : "비밀번호 재설정"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   );
 }
