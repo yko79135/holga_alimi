@@ -82,3 +82,13 @@ Add these Vercel environment variables without committing real secrets:
 - `VAPID_SUBJECT` - contact URI such as `mailto:school@example.com`.
 
 Existing Supabase variables remain required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and server-only `SUPABASE_SERVICE_ROLE_KEY`.
+
+## PWA icon cache after update
+
+Users who installed the app before this icon update may continue seeing the old cached icon. They should:
+
+1. Remove the existing Home Screen app.
+2. Open the redeployed portal in Safari or Chrome.
+3. Add or install it again.
+
+Do not assume an already installed icon will always refresh automatically.

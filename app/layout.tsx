@@ -9,7 +9,27 @@ export const metadata: Metadata = {
   description: "가정통신문과 학생별 생활지도 알림을 안전하게 전달하는 학부모 포털",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: schoolName, statusBarStyle: "default" },
-  icons: { apple: "/apple-touch-icon.svg" },
+  icons: {
+    icon: [
+      {
+        url: "/icons/holy-guide-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        url: "/icons/holy-guide-512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+    apple: [
+      {
+        url: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
   robots: {
     index: false,
     follow: false,
