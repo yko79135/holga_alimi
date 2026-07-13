@@ -54,6 +54,10 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetFeedback, setResetFeedback] = useState<Feedback | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccountSummary | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
 
   const loadAccounts = useCallback(async () => {
     setDirectoryLoading(true);
@@ -126,6 +130,33 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     setStudentIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
 
+
+  function closeDeleteModal() {
+    if (deleteSubmitting) return;
+    setDeleteTarget(null);
+    setDeleteConfirm("");
+    setDeleteFeedback(null);
+  }
+
+  async function deleteAccount() {
+    if (!deleteTarget || deleteSubmitting || deleteConfirm !== deleteTarget.email) return;
+    setDeleteSubmitting(true);
+    setDeleteFeedback(null);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(deleteTarget.id)}`, { method: "DELETE" });
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result.error || "계정 삭제에 실패했습니다.");
+      setFeedback({ type: "success", text: result.message || "계정을 영구 삭제했습니다." });
+      closeDeleteModal();
+      await loadAccounts();
+      onChanged();
+    } catch (error) {
+      setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "계정 삭제에 실패했습니다." });
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }
 
   function closeResetModal() {
     setResetTarget(null);
@@ -227,7 +258,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                 )}
                 {account.id !== userId && account.authExists && (
                   <div className="account-actions">
-                    <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button>
+                    <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button><button type="button" className="danger-button" onClick={() => { setFeedback(null); setDeleteFeedback(null); setDeleteConfirm(""); setDeleteTarget(account); }}>계정 영구 삭제</button>
                   </div>
                 )}
               </article>
@@ -236,6 +267,26 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
           {!accounts.length && <div className="empty-state">표시할 계정이 없습니다.</div>}
         </div>
       </section>
+
+
+
+      {deleteTarget && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
+          <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title">
+            <button type="button" className="modal-close" aria-label="닫기" onClick={closeDeleteModal} disabled={deleteSubmitting}>×</button>
+            <p className="eyebrow">PERMANENT DELETE</p>
+            <h2 id="delete-account-title">계정 영구 삭제</h2>
+            <dl className="reset-target-details">
+              <div><dt>이름</dt><dd>{deleteTarget.fullName || "이름 없음"}</dd></div><div><dt>이메일</dt><dd>{deleteTarget.email}</dd></div><div><dt>권한</dt><dd>{deleteTarget.role ? roleLabels[deleteTarget.role] : "권한 없음"}</dd></div><div><dt>상태</dt><dd>{statusLabels[deleteTarget.status]}</dd></div>
+            </dl>
+            <p className="destructive-warning">이 작업은 되돌릴 수 없습니다. 학부모 계정의 학생 연결, 확인 기록, 푸시 구독이 함께 삭제됩니다. 교사/관리자가 만든 과거 공지와 PDF는 보존됩니다.</p>
+            <label htmlFor="delete-account-confirm">대상 이메일을 정확히 입력하세요.</label>
+            <input id="delete-account-confirm" type="email" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} autoFocus />
+            {deleteFeedback && <p role="alert" className={deleteFeedback.type === "success" ? "success-message" : "form-error"}>{deleteFeedback.text}</p>}
+            <div className="modal-actions"><button type="button" className="secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>취소</button><button type="button" className="danger-button" onClick={deleteAccount} disabled={deleteSubmitting || deleteConfirm !== deleteTarget.email}>{deleteSubmitting ? "삭제 중..." : "이 계정을 영구 삭제"}</button></div>
+          </div>
+        </div>
+      )}
 
       {resetTarget && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !resetSubmitting) closeResetModal(); }}>

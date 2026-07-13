@@ -16,6 +16,8 @@ type Notice = {
 };
 
 type Attachment = { id: string; original_filename: string; size_bytes: number };
+type Feedback = { type: "success" | "error"; text: string };
+type StudentPreview = { name: string; grade: string; parentLinkCount: number; individualNoticeCount: number };
 
 const typeLabels: Record<string, string> = { newsletter:"가정통신문", warning:"학생 경고", guidance:"생활지도", consultation:"상담 안내", urgent:"긴급 공지" };
 
@@ -26,11 +28,16 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [notices, setNotices] = useState<Notice[]>([]);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [noticeDeleteTarget, setNoticeDeleteTarget] = useState<Notice | null>(null);
+  const [studentDeleteTarget, setStudentDeleteTarget] = useState<Student | null>(null);
+  const [studentPreview, setStudentPreview] = useState<StudentPreview | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [studentName, setStudentName] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
-  const [homeroom, setHomeroom] = useState("");
 
   const [form, setForm] = useState({
     type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false,
@@ -92,9 +99,68 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   async function addStudent(event: FormEvent) {
     event.preventDefault();
     const supabase = createClient();
-    const { error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim(), homeroom:homeroom.trim() || null });
-    setMessage(error ? error.message : "학생을 추가했습니다.");
-    if (!error) { setStudentName(""); setStudentGrade(""); setHomeroom(""); await load(); }
+    setMessage("");
+    setErrorMessage("");
+    const { error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim() });
+    if (error) { setErrorMessage(error.message); return; }
+    setMessage("학생을 추가했습니다.");
+    setStudentName(""); setStudentGrade(""); await load();
+  }
+
+
+  function closeDeleteModal() {
+    if (deleteSubmitting) return;
+    setNoticeDeleteTarget(null);
+    setStudentDeleteTarget(null);
+    setStudentPreview(null);
+    setConfirmText("");
+    setDeleteFeedback(null);
+  }
+
+  async function openStudentDelete(student: Student) {
+    setDeleteFeedback(null);
+    setConfirmText("");
+    setStudentDeleteTarget(student);
+    setStudentPreview(null);
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(student.id)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "삭제 영향을 확인하지 못했습니다.");
+      setStudentPreview(result);
+    } catch (error) {
+      setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "삭제 영향을 확인하지 못했습니다." });
+    }
+  }
+
+  async function deleteNotice() {
+    if (!noticeDeleteTarget || deleteSubmitting || confirmText !== "삭제") return;
+    setDeleteSubmitting(true); setDeleteFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/notices/${encodeURIComponent(noticeDeleteTarget.id)}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "공지 삭제에 실패했습니다.");
+      setMessage(result.message || "공지를 영구 삭제했습니다.");
+      setNoticeDeleteTarget(null); setConfirmText("");
+      setNotices((current) => current.filter((notice) => notice.id !== noticeDeleteTarget.id));
+      await load();
+    } catch (error) {
+      setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "공지 삭제에 실패했습니다." });
+    } finally { setDeleteSubmitting(false); }
+  }
+
+  async function deleteStudent() {
+    if (!studentDeleteTarget || deleteSubmitting || confirmText !== "삭제") return;
+    setDeleteSubmitting(true); setDeleteFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentDeleteTarget.id)}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학생 삭제에 실패했습니다.");
+      setMessage(result.message || "학생을 영구 삭제했습니다.");
+      setStudentDeleteTarget(null); setStudentPreview(null); setConfirmText("");
+      await load();
+    } catch (error) {
+      setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "학생 삭제에 실패했습니다." });
+    } finally { setDeleteSubmitting(false); }
   }
 
   function targetText(notice: Notice) {
@@ -155,6 +221,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
                 <div className="sent-top"><div><span className={`tag ${notice.type}`}>{typeLabels[notice.type]}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div><div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div></div>
                 <p className="sent-preview">{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
+                {role === "admin" && <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>}
                 {replies.length > 0 && <div className="reply-log"><strong>학부모 답변</strong>{replies.map((ack,index) => <p key={index}>“{ack.parent_reply}”</p>)}</div>}
               </article>;
             })}
@@ -168,14 +235,35 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
           <form className="form-panel" onSubmit={addStudent}>
             <p className="eyebrow">STUDENT DIRECTORY</p><h2>학생 추가</h2>
             <label>학생 이름</label><input value={studentName} onChange={(e) => setStudentName(e.target.value)} required />
-            <div className="two-columns"><div><label>학년</label><input value={studentGrade} onChange={(e) => setStudentGrade(e.target.value)} placeholder="G7E" required /></div><div><label>반</label><input value={homeroom} onChange={(e) => setHomeroom(e.target.value)} /></div></div>
-            <button className="primary">학생 저장</button>{message && <p className="success-message">{message}</p>}
+            <label>학년</label><input value={studentGrade} onChange={(e) => setStudentGrade(e.target.value)} placeholder="G7E" required />
+            <button className="primary">학생 저장</button>{message && <p className="success-message">{message}</p>}{errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
           </form>
-          <div className="content-card"><h2>학생 목록</h2><div className="directory-list">{students.map((student) => <div key={student.id}><span className="avatar">{student.name[0]}</span><p><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></p></div>)}</div></div>
+          <div className="content-card"><h2>학생 목록</h2><div className="directory-list">{students.map((student) => <div key={student.id}><span className="avatar">{student.name[0]}</span><p><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></p>{role === "admin" && <button type="button" className="danger-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button>}</div>)}</div></div>
         </section>
       )}
 
       {tab === "accounts" && role === "admin" && <AdminPanel userId={userId} onChanged={load} />}
+
+      {(noticeDeleteTarget || studentDeleteTarget) && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
+          <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title">
+            <button type="button" className="modal-close" aria-label="닫기" onClick={closeDeleteModal} disabled={deleteSubmitting}>×</button>
+            <p className="eyebrow">PERMANENT DELETE</p>
+            <h2 id="delete-modal-title">영구 삭제 확인</h2>
+            {noticeDeleteTarget && <dl className="reset-target-details">
+              <div><dt>공지 종류</dt><dd>{typeLabels[noticeDeleteTarget.type]}</dd></div><div><dt>제목</dt><dd>{noticeDeleteTarget.title}</dd></div><div><dt>대상</dt><dd>{targetText(noticeDeleteTarget)}</dd></div><div><dt>발송일</dt><dd>{new Date(noticeDeleteTarget.published_at).toLocaleString("ko-KR")}</dd></div><div><dt>PDF</dt><dd>{noticeDeleteTarget.notice_attachments?.length || 0}개</dd></div>
+            </dl>}
+            {studentDeleteTarget && <dl className="reset-target-details">
+              <div><dt>학생</dt><dd>{studentPreview?.name || studentDeleteTarget.name}</dd></div><div><dt>학년</dt><dd>{studentPreview?.grade || studentDeleteTarget.grade}</dd></div><div><dt>학부모 연결</dt><dd>{studentPreview ? `${studentPreview.parentLinkCount}개` : "확인 중..."}</dd></div><div><dt>개별 공지</dt><dd>{studentPreview ? `${studentPreview.individualNoticeCount}개` : "확인 중..."}</dd></div>
+            </dl>}
+            <p className="destructive-warning">{noticeDeleteTarget ? "읽음 기록, 확인, 답변, 학생 연결, 첨부파일이 모두 삭제됩니다." : "학부모/학생 연결이 삭제되며, 남은 대상 학생이 없는 개별 공지도 함께 삭제됩니다."}</p>
+            <label htmlFor="delete-confirm">확인을 위해 ‘삭제’를 입력하세요.</label>
+            <input id="delete-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoFocus />
+            {deleteFeedback && <p role="alert" className={deleteFeedback.type === "success" ? "success-message" : "form-error"}>{deleteFeedback.text}</p>}
+            <div className="modal-actions"><button type="button" className="secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>취소</button><button type="button" className="danger-button" onClick={noticeDeleteTarget ? deleteNotice : deleteStudent} disabled={deleteSubmitting || confirmText !== "삭제"}>{deleteSubmitting ? "삭제 중..." : noticeDeleteTarget ? "이 공지를 영구 삭제" : "이 학생을 영구 삭제"}</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
