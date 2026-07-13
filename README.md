@@ -64,3 +64,21 @@ NEXT_PUBLIC_SCHOOL_NAME=우리학교 학부모 포털
 - 퇴학·졸업·퇴사 계정은 즉시 비활성화하거나 삭제합니다.
 - 실제 운영 전 학부모 개인정보 수집·이용 동의 문구와 학교의 보존 기간 정책을 정합니다.
 - 문자·카카오톡·이메일 푸시 알림은 별도 외부 서비스 연동이 필요합니다. 현재 버전은 로그인 후 확인하는 인앱 알림 방식입니다.
+
+## Notice attachments and Web Push setup
+
+Run `supabase/20260713_notice_attachments_push.sql` in the Supabase SQL Editor. It creates the private `notice-attachments` Storage bucket, `notice_attachments`, `push_subscriptions`, indexes, and RLS policies.
+
+VAPID keys are required for Web Push. Generate placeholders locally with:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Add these Vercel environment variables without committing real secrets:
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` - public VAPID key exposed to browsers.
+- `VAPID_PRIVATE_KEY` - private VAPID key, server-only.
+- `VAPID_SUBJECT` - contact URI such as `mailto:school@example.com`.
+
+Existing Supabase variables remain required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and server-only `SUPABASE_SERVICE_ROLE_KEY`.
