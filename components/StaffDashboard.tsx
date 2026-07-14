@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
+import WarningManager from "@/components/warnings/WarningManager";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
@@ -243,6 +244,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
         <button className={tab === "compose" ? "active" : ""} onClick={() => setTab("compose")}>알림 작성</button>
         <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>발송 기록</button>
         <button className={tab === "students" ? "active" : ""} onClick={() => setTab("students")}>학생 관리</button>
+        <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>경고 관리</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}>계정 관리</button>}
       </nav>
 
@@ -296,6 +298,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
           </div>
         </section>
       )}
+
+      {tab === "warnings" && <WarningManager role={role} />}
 
       {tab === "students" && (
         <section className="panel-grid">
