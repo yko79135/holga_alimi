@@ -6,7 +6,12 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-type Student = { id: string; name: string; grade: string; homeroom: string | null };
+type Student = {
+  id: string;
+  name: string;
+  grade: string;
+  homeroom: string | null;
+};
 type Ack = {
   read_at: string | null;
   confirmed_at: string | null;
@@ -23,7 +28,10 @@ type Notice = {
   target_grade: string | null;
   requires_confirmation: boolean;
   published_at: string;
-  notice_students?: Array<{ student_id: string; students: Student | Student[] | null }>;
+  notice_students?: Array<{
+    student_id: string;
+    students: Student | Student[] | null;
+  }>;
   acknowledgements?: Ack[];
   notice_attachments?: Attachment[];
 };
@@ -53,21 +61,30 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/parent/dashboard", { cache: "no-store" });
+      const response = await fetch("/api/parent/dashboard", {
+        cache: "no-store",
+      });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "변경사항을 불러오지 못했습니다.");
+      if (!response.ok)
+        throw new Error(result.error || "변경사항을 불러오지 못했습니다.");
       const nextNotices = (result.notices || []) as Notice[];
       setStudents((result.students || []) as Student[]);
       setWarningRows(result.warnings || []);
       setNotices(nextNotices);
-      setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
+      setSelected((current) =>
+        current
+          ? nextNotices.find((notice) => notice.id === current.id) || null
+          : null,
+      );
     } catch {
       setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
     }
     setLoading(false);
   }, [userId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   useLiveRefresh({
     channelName: `parent-dashboard-${userId}`,
     tables: [
@@ -83,7 +100,8 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   });
 
   const unreadCount = useMemo(
-    () => notices.filter((notice) => !notice.acknowledgements?.[0]?.read_at).length,
+    () =>
+      notices.filter((notice) => !notice.acknowledgements?.[0]?.read_at).length,
     [notices],
   );
 
@@ -114,13 +132,22 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete("notice");
     const nextQuery = nextParams.toString();
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    });
   }, [pathname, router, searchParams, selected?.id]);
 
   useEffect(() => {
     const id = searchParams.get("notice");
-    if (!id || id !== closingNoticeIdRef.current) closingNoticeIdRef.current = null;
-    if (!id || closingNoticeIdRef.current === id || !notices.length || selected?.id === id) return;
+    if (!id || id !== closingNoticeIdRef.current)
+      closingNoticeIdRef.current = null;
+    if (
+      !id ||
+      closingNoticeIdRef.current === id ||
+      !notices.length ||
+      selected?.id === id
+    )
+      return;
     const notice = notices.find((item) => item.id === id);
     if (notice) void openNotice(notice);
   }, [searchParams, notices, selected?.id]);
@@ -141,10 +168,16 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     setReply(notice.acknowledgements?.[0]?.parent_reply || "");
     if (!notice.acknowledgements?.[0]?.read_at) {
       const supabase = createClient();
-      await supabase.from("acknowledgements").upsert(
-        { notice_id: notice.id, parent_id: userId, read_at: new Date().toISOString() },
-        { onConflict: "notice_id,parent_id" },
-      );
+      await supabase
+        .from("acknowledgements")
+        .upsert(
+          {
+            notice_id: notice.id,
+            parent_id: userId,
+            read_at: new Date().toISOString(),
+          },
+          { onConflict: "notice_id,parent_id" },
+        );
       await load();
     }
   }
@@ -153,14 +186,33 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     if (!selected) return;
     const supabase = createClient();
     const now = new Date().toISOString();
-    const { error } = await supabase.from("acknowledgements").upsert(
-      { notice_id: selected.id, parent_id: userId, read_at: now, confirmed_at: now },
-      { onConflict: "notice_id,parent_id" },
+    const { error } = await supabase
+      .from("acknowledgements")
+      .upsert(
+        {
+          notice_id: selected.id,
+          parent_id: userId,
+          read_at: now,
+          confirmed_at: now,
+        },
+        { onConflict: "notice_id,parent_id" },
+      );
+    setMessage(
+      error ? "확인 처리에 실패했습니다." : "확인 완료로 기록되었습니다.",
     );
-    setMessage(error ? "확인 처리에 실패했습니다." : "확인 완료로 기록되었습니다.");
     if (!error) {
       const previous = selected.acknowledgements?.[0];
-      setSelected({ ...selected, acknowledgements: [{ read_at: now, confirmed_at: now, parent_reply: previous?.parent_reply || null, replied_at: previous?.replied_at || null }] });
+      setSelected({
+        ...selected,
+        acknowledgements: [
+          {
+            read_at: now,
+            confirmed_at: now,
+            parent_reply: previous?.parent_reply || null,
+            replied_at: previous?.replied_at || null,
+          },
+        ],
+      });
     }
     await load();
   }
@@ -179,89 +231,245 @@ export default function ParentDashboard({ userId }: { userId: string }) {
       },
       { onConflict: "notice_id,parent_id" },
     );
-    setMessage(error ? "답변 저장에 실패했습니다." : "학교에 답변을 전달했습니다.");
+    setMessage(
+      error ? "답변 저장에 실패했습니다." : "학교에 답변을 전달했습니다.",
+    );
     if (!error) {
       const previous = selected.acknowledgements?.[0];
-      setSelected({ ...selected, acknowledgements: [{ read_at: now, confirmed_at: previous?.confirmed_at || null, parent_reply: reply.trim(), replied_at: now }] });
+      setSelected({
+        ...selected,
+        acknowledgements: [
+          {
+            read_at: now,
+            confirmed_at: previous?.confirmed_at || null,
+            parent_reply: reply.trim(),
+            replied_at: now,
+          },
+        ],
+      });
     }
     await load();
   }
 
   return (
-    <div className="dashboard-layout parent-dashboard">
-      <aside className="sidebar-card">
-        <p className="eyebrow">MY CHILDREN</p>
-        <h2>연결된 학생</h2>
-        <div className="student-stack">
-          {students.map((student) => (
-            <div className="student-chip" key={student.id}>
-              <span className="avatar">{student.name.slice(0, 1)}</span>
-              <div><strong>{student.name}</strong><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></div>
-            </div>
-          ))}
-          {!students.length && <p className="muted">연결된 학생이 없습니다.</p>}
-        </div>
-        <div className="summary-box"><strong>{unreadCount}</strong><span>읽지 않은 알림</span></div>
-      </aside>
-
-      <section className="content-card parent-warning-card"><div className="section-heading"><div><p className="eyebrow">WARNING STATUS</p><h2>경고 현황</h2></div></div><div className="sent-list">{warningRows.length ? warningRows.map((w:any)=><article className="sent-card" key={w.id || `${w.student_id}-${w.created_at}`}><span className="tag warning">경고</span><h3>{w.entry_type === "grace_adjustment" ? "은혜의 희월" : w.warning_date}</h3><p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>{w.parent_visible_reason && <p className="sent-preview">{w.parent_visible_reason}</p>}</article>) : <p className="muted">표시할 경고 내역이 없습니다.</p>}</div></section>
-
-      <section className="content-card">
-        <div className="section-heading">
-          <div><p className="eyebrow">NOTIFICATIONS</p><h2>학교 알림</h2></div>
-          <div className="filter-row">
-            {[["all","전체"],["unread","읽지 않음"],["individual","개별 알림"]].map(([value,label]) => (
-              <button key={value} className={filter === value ? "filter active" : "filter"} onClick={() => setFilter(value)}>{label}</button>
+    <>
+      <div className="dashboard-layout parent-dashboard parent-dashboard-layout">
+        <aside className="sidebar-card parent-sidebar">
+          <p className="eyebrow">MY CHILDREN</p>
+          <h2>연결된 학생</h2>
+          <div className="student-stack">
+            {students.map((student) => (
+              <div className="student-chip" key={student.id}>
+                <span className="avatar">{student.name.slice(0, 1)}</span>
+                <div>
+                  <strong>{student.name}</strong>
+                  <small>
+                    {student.grade}
+                    {student.homeroom ? ` · ${student.homeroom}` : ""}
+                  </small>
+                </div>
+              </div>
             ))}
+            {!students.length && (
+              <p className="muted">연결된 학생이 없습니다.</p>
+            )}
           </div>
-        </div>
+          <div className="summary-box">
+            <strong>{unreadCount}</strong>
+            <span>읽지 않은 알림</span>
+          </div>
+        </aside>
 
-        {loading ? <p className="muted">알림을 불러오는 중입니다...</p> : (
-          <div className="notice-list">
-            {filtered.map((notice) => {
-              const ack = notice.acknowledgements?.[0];
-              return (
-                <button className={`notice-row ${!ack?.read_at ? "unread" : ""}`} key={notice.id} onClick={() => openNotice(notice)}>
-                  <span className={`notice-icon ${notice.type}`}>{notice.type === "warning" ? "!" : notice.type === "urgent" ? "⚑" : "✉"}</span>
-                  <span className="notice-main">
-                    <span className="notice-meta"><b>{typeLabels[notice.type] || notice.type}</b> · {recipientText(notice)}</span>
-                    <strong>{notice.title}</strong>
-                    <small>{new Date(notice.published_at).toLocaleString("ko-KR")}</small>
-                  </span>
-                  <span className="notice-state">{ack?.confirmed_at ? "확인 완료" : ack?.read_at ? "읽음" : "새 알림"}</span>
-                </button>
-              );
-            })}
-            {!filtered.length && <div className="empty-state">해당하는 알림이 없습니다.</div>}
-          </div>
-        )}
-      </section>
+        <main className="parent-main-column">
+          <section className="content-card parent-warning-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">WARNING STATUS</p>
+                <h2>경고 현황</h2>
+              </div>
+            </div>
+            <div className="sent-list">
+              {warningRows.length ? (
+                warningRows.map((w: any) => (
+                  <article
+                    className="sent-card"
+                    key={w.id || `${w.student_id}-${w.created_at}`}
+                  >
+                    <span className="tag warning">경고</span>
+                    <h3>
+                      {w.entry_type === "grace_adjustment"
+                        ? "은혜의 희월"
+                        : w.warning_date}
+                    </h3>
+                    <p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>
+                    {w.parent_visible_reason && (
+                      <p className="sent-preview">{w.parent_visible_reason}</p>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <p className="muted">표시할 경고 내역이 없습니다.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="content-card parent-notice-card">
+            <div className="section-heading parent-notice-heading">
+              <div>
+                <p className="eyebrow">NOTIFICATIONS</p>
+                <h2>학교 알림</h2>
+              </div>
+              <div className="filter-row">
+                {[
+                  ["all", "전체"],
+                  ["unread", "읽지 않음"],
+                  ["individual", "개별 알림"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={filter === value ? "filter active" : "filter"}
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {loading ? (
+              <p className="muted">알림을 불러오는 중입니다...</p>
+            ) : (
+              <div className="notice-list">
+                {filtered.map((notice) => {
+                  const ack = notice.acknowledgements?.[0];
+                  return (
+                    <button
+                      className={`notice-row ${!ack?.read_at ? "unread" : ""}`}
+                      key={notice.id}
+                      onClick={() => openNotice(notice)}
+                    >
+                      <span className={`notice-icon ${notice.type}`}>
+                        {notice.type === "warning"
+                          ? "!"
+                          : notice.type === "urgent"
+                            ? "⚑"
+                            : "✉"}
+                      </span>
+                      <span className="notice-main">
+                        <span className="notice-meta">
+                          <b>{typeLabels[notice.type] || notice.type}</b> ·{" "}
+                          {recipientText(notice)}
+                        </span>
+                        <strong>{notice.title}</strong>
+                        <small>
+                          {new Date(notice.published_at).toLocaleString(
+                            "ko-KR",
+                          )}
+                        </small>
+                      </span>
+                      <span className="notice-state">
+                        {ack?.confirmed_at
+                          ? "확인 완료"
+                          : ack?.read_at
+                            ? "읽음"
+                            : "새 알림"}
+                      </span>
+                    </button>
+                  );
+                })}
+                {!filtered.length && (
+                  <div className="empty-state">해당하는 알림이 없습니다.</div>
+                )}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
 
       {selected && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeNotice(); }}>
-          <article className="modal-card" role="dialog" aria-modal="true" aria-labelledby="parent-notice-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modal-close" aria-label="닫기" onClick={closeNotice}>×</button>
-            <span className={`tag ${selected.type}`}>{typeLabels[selected.type] || selected.type}</span>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeNotice();
+          }}
+        >
+          <article
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="parent-notice-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="닫기"
+              onClick={closeNotice}
+            >
+              ×
+            </button>
+            <span className={`tag ${selected.type}`}>
+              {typeLabels[selected.type] || selected.type}
+            </span>
             <h2 id="parent-notice-title">{selected.title}</h2>
-            <p className="modal-meta">대상: {recipientText(selected)} · {new Date(selected.published_at).toLocaleString("ko-KR")}</p>
+            <p className="modal-meta">
+              대상: {recipientText(selected)} ·{" "}
+              {new Date(selected.published_at).toLocaleString("ko-KR")}
+            </p>
             <div className="notice-body">{selected.body}</div>
-            {!!selected.notice_attachments?.length && <div className="attachment-list">{selected.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
+            {!!selected.notice_attachments?.length && (
+              <div className="attachment-list">
+                {selected.notice_attachments.map((att) => (
+                  <div className="attachment-item" key={att.id}>
+                    <span>
+                      📎 {att.original_filename} · {formatBytes(att.size_bytes)}
+                    </span>
+                    <a
+                      className="secondary"
+                      href={`/api/attachments/${att.id}`}
+                      target="_blank"
+                    >
+                      미리보기
+                    </a>
+                    <a
+                      className="secondary"
+                      href={`/api/attachments/${att.id}?download=1`}
+                    >
+                      다운로드
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {selected.requires_confirmation && (
-              <button className="primary" onClick={confirmNotice} disabled={Boolean(selected.acknowledgements?.[0]?.confirmed_at)}>
-                {selected.acknowledgements?.[0]?.confirmed_at ? "확인 완료됨" : "내용을 확인했습니다"}
+              <button
+                className="primary"
+                onClick={confirmNotice}
+                disabled={Boolean(selected.acknowledgements?.[0]?.confirmed_at)}
+              >
+                {selected.acknowledgements?.[0]?.confirmed_at
+                  ? "확인 완료됨"
+                  : "내용을 확인했습니다"}
               </button>
             )}
 
             <div className="reply-box">
               <label>학교에 답변하기</label>
-              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="문의사항이나 전달할 내용을 입력하세요." />
-              <button className="secondary" onClick={saveReply}>답변 저장</button>
+              <textarea
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                placeholder="문의사항이나 전달할 내용을 입력하세요."
+              />
+              <button className="secondary" onClick={saveReply}>
+                답변 저장
+              </button>
             </div>
             {message && <p className="success-message">{message}</p>}
           </article>
         </div>
       )}
-    </div>
+    </>
   );
 }
