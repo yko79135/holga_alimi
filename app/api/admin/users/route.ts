@@ -146,6 +146,7 @@ async function upsertAndVerifyProfile(admin: ReturnType<typeof createAdminClient
 }
 
 export async function GET() {
+  const start = process.env.NODE_ENV !== "production" ? performance.now() : 0;
   const auth = await requireAdmin();
   if ("error" in auth) return auth.error;
 
@@ -178,6 +179,7 @@ export async function GET() {
     }
 
     const profileMap = new Map((profiles as ProfileRow[]).map((profile) => [profile.id, profile]));
+    if (process.env.NODE_ENV !== "production") console.debug("admin-account-list", { durationMs: Math.round(performance.now() - start), count: authUsers.length });
     return NextResponse.json({ accounts: authUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id))) });
   } catch (error) {
     logSupabaseError("Failed to list admin accounts", error);
@@ -231,7 +233,8 @@ export async function POST(request: Request) {
       if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
     }
 
-    return NextResponse.json({ account: toAccount(profile, created.user) });
+    const { data: summaryProfile } = await admin.from("profiles").select(ACCOUNT_LIST_SELECT).eq("id", newUserId).single();
+    return NextResponse.json({ account: buildSummary(created.user, (summaryProfile || profile) as ProfileRow) });
   } catch (error) {
     safeLog("Admin account creation failed", { message: error instanceof Error ? error.message : "unknown", newUserId });
     if (newUserId) {

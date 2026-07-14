@@ -58,45 +58,53 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [warningRows, setWarningRows] = useState<any[]>([]);
   const [message, setMessage] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const requestIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadDashboard = useCallback(async ({ initial }: { initial: boolean }) => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    if (initial) setLoading(true);
     try {
-      const response = await fetch("/api/parent/dashboard", {
-        cache: "no-store",
-      });
+      const response = await fetch("/api/parent/dashboard", { cache: "no-store", signal: controller.signal });
       const result = await response.json();
-      if (!response.ok)
-        throw new Error(result.error || "변경사항을 불러오지 못했습니다.");
+      if (!response.ok) throw new Error(result.error || "변경사항을 불러오지 못했습니다.");
+      if (requestId !== requestIdRef.current) return;
       const nextNotices = (result.notices || []) as Notice[];
       setStudents((result.students || []) as Student[]);
       setWarningRows(result.warnings || []);
       setNotices(nextNotices);
-      setSelected((current) =>
-        current
-          ? nextNotices.find((notice) => notice.id === current.id) || null
-          : null,
-      );
-    } catch {
-      setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
+      setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      if (requestId === requestIdRef.current && initial) setLoading(false);
     }
-    setLoading(false);
   }, [userId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadDashboard({ initial: true });
+    return () => abortRef.current?.abort();
+  }, [loadDashboard]);
   useLiveRefresh({
-    channelName: `parent-dashboard-${userId}`,
+    channelName: `parent-dashboard-events-${userId}`,
+    tables: [{ table: "parent_dashboard_events", filter: `parent_id=eq.${userId}` }],
+    onRefresh: () => loadDashboard({ initial: false }),
+    debounceMs: 150,
+    refreshOnSubscribed: true,
+    onError: (status) => { if (process.env.NODE_ENV !== "production") console.warn("parent-dashboard-realtime", status); },
+  });
+
+  useLiveRefresh({
+    channelName: `parent-dashboard-fallback-${userId}`,
     tables: [
-      { table: "notices" },
-      { table: "notice_students" },
-      { table: "notice_attachments" },
       { table: "acknowledgements", filter: `parent_id=eq.${userId}` },
       { table: "parent_students", filter: `parent_id=eq.${userId}` },
-      { table: "students" },
-      { table: "warning_entries" },
     ],
-    onRefresh: load,
+    onRefresh: () => loadDashboard({ initial: false }),
   });
 
   const unreadCount = useMemo(
@@ -178,7 +186,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
           },
           { onConflict: "notice_id,parent_id" },
         );
-      await load();
+      await loadDashboard({ initial: false });
     }
   }
 
@@ -214,7 +222,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         ],
       });
     }
-    await load();
+    await loadDashboard({ initial: false });
   }
 
   async function saveReply() {
@@ -248,7 +256,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         ],
       });
     }
-    await load();
+    await loadDashboard({ initial: false });
   }
 
   return (

@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendNoticePushes } from "@/lib/push/send";
-import { userIsStaff, getUserRoles } from "@/lib/roles-server";
+import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { buildWarningNotice, changeType } from "@/lib/warnings/format";
 import { buildWarningReasonTemplate, hasMeaningfulReasonAfterTemplate, warningDelta, warningReasonErrorMessage } from "@/lib/warnings/reasons";
 import type { WarningCellChange } from "@/lib/warnings/types";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,8 @@ async function staff(requestId: string): Promise<StaffAuth | { e: NextResponse }
     return { e: NextResponse.json({ error: "세션이 만료되었습니다. 다시 로그인해 주세요." }, { status: 401 }) };
   }
   const roles = await getUserRoles(supabase, user.id);
-  if (!await userIsStaff(supabase, user.id)) {
+  const isStaff = roles.includes("admin") || roles.includes("teacher");
+  if (!isStaff) {
     return { e: NextResponse.json({ error: "교사 또는 관리자 권한이 필요합니다." }, { status: 403 }) };
   }
   return { supabase, user: { id: user.id }, role: effectiveStaffRole(roles) || "teacher" };
@@ -69,7 +71,9 @@ function isDateOnly(value: unknown) {
 
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
+  const authStart = process.env.NODE_ENV !== "production" ? performance.now() : 0;
   const a = await staff(requestId);
+  if (process.env.NODE_ENV !== "production") console.debug("warning-auth", { durationMs: Math.round(performance.now() - authStart) });
   if ("e" in a) return a.e;
 
   let body: any;
@@ -129,6 +133,7 @@ export async function POST(req: Request) {
     }
   }
 
+  const dbStart = process.env.NODE_ENV !== "production" ? performance.now() : 0;
   const batchRes = await a.supabase.from("warning_change_batches").insert({ idempotency_key: idempotencyKey, academic_year: academicYear, semester, month, author_id: a.user.id }).select("id").single();
   if (batchRes.error || !batchRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_change_batches", errorCode: batchRes.error?.code, errorMessage: batchRes.error?.message });
   const batchId = batchRes.data.id;
@@ -143,6 +148,9 @@ export async function POST(req: Request) {
   if (entryRes.error || !entryRes.data) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: entryRes.error?.code, errorMessage: entryRes.error?.message, insertedRowCount: undefined });
   if (entryRes.data.length !== rows.length) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: "INSERTED_ROW_COUNT_MISMATCH", errorMessage: `Expected ${rows.length}, inserted ${entryRes.data.length}.`, insertedRowCount: entryRes.data.length });
 
+  if (process.env.NODE_ENV !== "production") console.debug("warning-database-save", { durationMs: Math.round(performance.now() - dbStart) });
+
+  const noticeStart = process.env.NODE_ENV !== "production" ? performance.now() : 0;
   const [allEntriesRes, linksRes] = await Promise.all([
     a.supabase.from("warning_entries").select("student_id,delta,month").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester),
     a.supabase.from("parent_students").select("student_id,parent_id").in("student_id", affectedStudentIds),
@@ -150,8 +158,9 @@ export async function POST(req: Request) {
   if (allEntriesRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "warning_entries", errorCode: allEntriesRes.error.code, errorMessage: allEntriesRes.error.message, insertedRowCount: entryRes.data.length });
   if (linksRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "parent_students", errorCode: linksRes.error.code, errorMessage: linksRes.error.message, insertedRowCount: entryRes.data.length });
 
-  let notices = 0, pushSent = 0, pushFailed = 0, recipients = 0;
+  let notices = 0, recipients = 0;
   const missing: string[] = [];
+  const createdNotices: Array<{ notice: { id: string; target_scope: string; target_grade: string | null }; studentId: string }> = [];
   for (const studentId of affectedStudentIds) {
     const student = (submittedStudentsRes.data || []).find((s: any) => s.id === studentId);
     const perStudentChanges = changes.filter((change) => change.studentId === studentId);
@@ -167,15 +176,36 @@ export async function POST(req: Request) {
       logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "insert", table: "notice_students", errorCode: noticeStudentRes.error?.code, errorMessage: noticeStudentRes.error?.message, insertedRowCount: entryRes.data.length });
       continue;
     }
-    const recipientCount = (linksRes.data || []).filter((link: any) => link.student_id === studentId).length;
+    const uniqueParents = new Set((linksRes.data || []).filter((link: any) => link.student_id === studentId).map((link: any) => link.parent_id));
+    const recipientCount = uniqueParents.size;
     if (!recipientCount) missing.push(studentId);
-    const push = await sendNoticePushes(noticeRes.data);
-    const generatedRes = await a.supabase.from("warning_generated_notices").upsert({ batch_id: batchId, student_id: studentId, notice_id: noticeRes.data.id, recipient_count: recipientCount, push_sent_count: push.sent, push_failed_count: push.failed }).select("batch_id").single();
+    const generatedRes = await a.supabase.from("warning_generated_notices").upsert({ batch_id: batchId, student_id: studentId, notice_id: noticeRes.data.id, recipient_count: recipientCount, push_sent_count: 0, push_failed_count: 0 }).select("batch_id").single();
     if (generatedRes.error || !generatedRes.data) logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "upsert", table: "warning_generated_notices", errorCode: generatedRes.error?.code, errorMessage: generatedRes.error?.message, insertedRowCount: entryRes.data.length });
     notices++;
     recipients += recipientCount;
-    pushSent += push.sent;
-    pushFailed += push.failed;
+    createdNotices.push({ notice: noticeRes.data, studentId });
+  }
+
+  const parentIds = Array.from(new Set((linksRes.data || []).map((link: any) => link.parent_id).filter(Boolean)));
+  if (parentIds.length) {
+    const eventRes = await a.supabase.from("parent_dashboard_events").insert(parentIds.map((parentId) => ({ parent_id: parentId, event_type: "warning_updated", entity_id: batchId })));
+    if (eventRes.error) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "parent_dashboard_events", errorCode: eventRes.error.code, errorMessage: eventRes.error.message, insertedRowCount: entryRes.data.length });
+  }
+  if (process.env.NODE_ENV !== "production") console.debug("warning-notice-generation", { durationMs: Math.round(performance.now() - noticeStart), notices, parentEvents: parentIds.length });
+
+  if (createdNotices.length) {
+    after(async () => {
+      const admin = createAdminClient();
+      for (const item of createdNotices) {
+        try {
+          const push = await sendNoticePushes(item.notice);
+          const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", item.studentId);
+          if (error) console.error("warning-push-count-update-failed", { batchId, noticeId: item.notice.id, code: error.code, message: error.message });
+        } catch (error) {
+          console.error("warning-push-background-failed", { batchId, noticeId: item.notice.id, message: error instanceof Error ? error.message : "unknown" });
+        }
+      }
+    });
   }
 
   if (missing.length) {
@@ -184,5 +214,5 @@ export async function POST(req: Request) {
   }
 
   logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "save-complete", table: "warning_entries", insertedRowCount: entryRes.data.length, refetchResult: "client-grid-refetch-required" });
-  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_sent: pushSent, push_failed: pushFailed, message: `${affectedStudentIds.length}명의 학생 경고 내역을 저장했습니다. 학부모 알림 ${notices}건이 생성되었고, 푸시 알림 ${pushSent}건이 전송되었습니다.`, batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, push: { sent: pushSent, failed: pushFailed }, missingParentStudentIds: missing });
+  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_started: createdNotices.length > 0, message: "경고 내역과 학부모 알림이 저장되었습니다. 푸시 알림 전송을 시작했습니다.", batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, missingParentStudentIds: missing });
 }

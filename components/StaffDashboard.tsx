@@ -58,30 +58,48 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
     type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false,
   });
 
-  const load = useCallback(async () => {
+  const sortStudents = (items: Student[]) => [...items].sort((a, b) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name));
+
+  const loadStudents = useCallback(async () => {
     const supabase = createClient();
-    const [studentResult, noticeResult, profileResult] = await Promise.all([
-      supabase.from("students").select("id,name,grade,homeroom,active").order("grade").order("name"),
-      supabase.from("notices").select(`id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false }),
-      supabase.from("profiles").select("id,full_name,email,role").order("created_at", { ascending:false }),
-    ]);
-    setStudents(studentResult.data || []);
-    setNotices((noticeResult.data || []) as unknown as Notice[]);
-    setProfiles(profileResult.data || []);
-    if (role === "admin") {
-      const { data: links } = await supabase.from("parent_students").select("student_id,parent_id,profiles(id,full_name,email),students(id,name,grade)");
-      const grouped: Record<string, ParentLink[]> = {};
-      ((links || []) as any[]).forEach((link) => {
-        const parent = Array.isArray(link.profiles) ? link.profiles[0] : link.profiles;
-        const student = Array.isArray(link.students) ? link.students[0] : link.students;
-        if (!parent || !link.student_id) return;
-        grouped[link.student_id] = [...(grouped[link.student_id] || []), { parentId: link.parent_id, fullName: parent.full_name || "", email: parent.email || "", linkedStudents: student ? [student] : [] }];
-      });
-      setParentLinks(grouped);
-    }
+    const { data } = await supabase.from("students").select("id,name,grade,homeroom,active").order("grade").order("name");
+    setStudents((data || []) as Student[]);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadNotices = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("notices").select(`id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
+    setNotices((data || []) as unknown as Notice[]);
+  }, []);
+
+  const loadProfiles = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("profiles").select("id,full_name,email,role").order("created_at", { ascending:false });
+    setProfiles(data || []);
+  }, []);
+
+  const loadParentLinks = useCallback(async () => {
+    if (role !== "admin") return;
+    const supabase = createClient();
+    const { data: links } = await supabase.from("parent_students").select("student_id,parent_id,profiles(id,full_name,email),students(id,name,grade)");
+    const grouped: Record<string, ParentLink[]> = {};
+    ((links || []) as any[]).forEach((link) => {
+      const parent = Array.isArray(link.profiles) ? link.profiles[0] : link.profiles;
+      const student = Array.isArray(link.students) ? link.students[0] : link.students;
+      if (!parent || !link.student_id) return;
+      grouped[link.student_id] = [...(grouped[link.student_id] || []), { parentId: link.parent_id, fullName: parent.full_name || "", email: parent.email || "", linkedStudents: student ? [student] : [] }];
+    });
+    setParentLinks(grouped);
+  }, [role]);
+
+  const load = useCallback(async () => {
+    await Promise.all([loadStudents(), loadNotices(), loadProfiles(), loadParentLinks()]);
+  }, [loadStudents, loadNotices, loadProfiles, loadParentLinks]);
+
+  useEffect(() => { void loadStudents(); }, [loadStudents]);
+  useEffect(() => { if (tab === "compose") void loadStudents(); }, [tab, loadStudents]);
+  useEffect(() => { if (tab === "notices") void loadNotices(); }, [tab, loadNotices]);
+  useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); } }, [tab, loadStudents, loadProfiles, loadParentLinks]);
   useLiveRefresh({
     channelName: `staff-dashboard-${userId}-${role}`,
     tables: [
@@ -93,7 +111,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       { table: "parent_students" },
       { table: "profiles" },
     ],
-    onRefresh: load,
+    onRefresh: () => { void load(); },
   });
 
   const loadStudentParents = useCallback(async (studentId: string) => {
@@ -170,20 +188,24 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
 
   async function addStudent(event: FormEvent) {
     event.preventDefault();
+    const start = process.env.NODE_ENV !== "production" ? performance.now() : 0;
     const supabase = createClient();
     setMessage("");
     setErrorMessage("");
-    const { data, error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim() }).select("id").single();
+    const { data, error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim() }).select("id,name,grade,homeroom,active").single();
     if (error) { setErrorMessage(error.message); return; }
+    const newStudent = data as Student;
+    setStudents((current) => sortStudents([...current.filter((student) => student.id !== newStudent.id), newStudent]));
     if (role === "admin" && studentParentId && data?.id) {
       const response = await fetch(`/api/admin/students/${encodeURIComponent(data.id)}/parents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentId: studentParentId }) });
       const result = await response.json();
       if (!response.ok) { setErrorMessage(result.error || "학생은 추가했지만 학부모 연결에 실패했습니다."); }
-      else setMessage("학생을 추가하고 학부모 계정을 연결했습니다.");
+      else { setMessage("학생을 추가하고 학부모 계정을 연결했습니다."); void loadStudentParents(newStudent.id); }
     } else {
       setMessage("학생을 추가했습니다. 필요하면 학생 목록에서 학부모 계정을 연결하세요.");
     }
-    setStudentName(""); setStudentGrade(""); setStudentParentId(""); await load();
+    if (process.env.NODE_ENV !== "production") console.debug("student-create", { durationMs: Math.round(performance.now() - start) });
+    setStudentName(""); setStudentGrade(""); setStudentParentId(""); void loadStudents();
   }
 
 
@@ -253,7 +275,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       setParentSearch((current) => ({ ...current, [studentId]: "" }));
       setExpandedLinkPanel((current) => ({ ...current, [studentId]: false }));
       await loadStudentParents(studentId);
-      await load();
+      void loadParentLinks();
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "학부모 계정 연결에 실패했습니다."); }
     finally { setLinkingStudentId(null); }
   }
@@ -267,7 +289,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       if (!response.ok) throw new Error(result.error || "학부모 계정 연결 해제에 실패했습니다.");
       setMessage(result.message || "학부모 계정 연결이 해제되었습니다.");
       await loadStudentParents(studentId);
-      await load();
+      void loadParentLinks();
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "학부모 계정 연결 해제에 실패했습니다."); }
     finally { setLinkingStudentId(null); }
   }
