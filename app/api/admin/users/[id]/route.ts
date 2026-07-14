@@ -17,8 +17,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       if (profile) return adminJsonError("Auth 사용자가 없는 고아 프로필입니다. Supabase에서 상태를 확인한 뒤 정리해주세요.", 409);
       return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
     }
-    if (profile?.role === "admin") {
-      const { count, error: countError } = await admin.from("profiles").select("id", { count: "exact", head: true }).eq("role", "admin");
+    const { data: targetRoles } = await admin.from("profile_roles").select("role").eq("profile_id", targetUserId);
+    if ((targetRoles || []).some((r: any) => r.role === "admin")) {
+      const { count, error: countError } = await admin.from("profile_roles").select("profile_id", { count: "exact", head: true }).eq("role", "admin");
       if (countError) throw new Error("ADMIN_COUNT_FAILED");
       if ((count || 0) <= 1) return adminJsonError("마지막 관리자 계정은 삭제할 수 없습니다.", 400);
     }

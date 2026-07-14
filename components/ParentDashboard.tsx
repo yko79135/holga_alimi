@@ -49,33 +49,16 @@ export default function ParentDashboard({ userId }: { userId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-
-    const [{ data: links }, { data: noticeRows, error }] = await Promise.all([
-      supabase.from("parent_students").select("students(id,name,grade,homeroom)").eq("parent_id", userId),
-      supabase
-        .from("notices")
-        .select(`
-          id,type,title,body,target_scope,target_grade,requires_confirmation,published_at,
-          notice_students(student_id,students(id,name,grade,homeroom)),
-          notice_attachments(id,original_filename,size_bytes),
-          acknowledgements(read_at,confirmed_at,parent_reply,replied_at)
-        `)
-        .order("published_at", { ascending: false }),
-    ]);
-
-    const studentRows = (links || []).flatMap((row: any) => {
-      if (Array.isArray(row.students)) return row.students;
-      return row.students ? [row.students] : [];
-    });
-    setStudents(studentRows as Student[]);
-    const warningResult = await supabase.from("warning_entries").select("student_id,warning_date,entry_type,delta,parent_visible_reason,created_at,students(name,grade)").order("created_at", { ascending: false }).limit(50);
-    if (!warningResult.error) setWarningRows(warningResult.data || []);
-    if (!error) {
-      const nextNotices = (noticeRows || []) as unknown as Notice[];
+    try {
+      const response = await fetch("/api/parent/dashboard", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "변경사항을 불러오지 못했습니다.");
+      const nextNotices = (result.notices || []) as Notice[];
+      setStudents((result.students || []) as Student[]);
+      setWarningRows(result.warnings || []);
       setNotices(nextNotices);
       setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
-    } else {
+    } catch {
       setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
     }
     setLoading(false);

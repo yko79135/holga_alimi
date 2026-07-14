@@ -3,8 +3,9 @@ import "server-only";
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { getUserRoles } from "@/lib/roles-server";
 
-type AdminProfile = { id: string; role: string; email: string | null; full_name: string | null };
+type AdminProfile = { id: string; role: string; email: string | null; full_name: string | null; roles: string[] };
 
 export function adminJsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -21,9 +22,10 @@ export async function requireAdmin(): Promise<{ user: User; profile: AdminProfil
     .eq("id", user.id)
     .single<AdminProfile>();
 
-  if (profileError || !profile || profile.role !== "admin") {
+  const roles = await getUserRoles(supabase, user.id);
+  if (profileError || !profile || !roles.includes("admin")) {
     return { error: adminJsonError("관리자 권한이 필요합니다.", 403) };
   }
 
-  return { user, profile };
+  return { user, profile: { ...profile, roles } };
 }
