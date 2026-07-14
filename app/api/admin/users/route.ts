@@ -16,7 +16,7 @@ type ProfileRow = {
 };
 
 const VALID_ROLES: AppRole[] = ["admin", "teacher", "parent"];
-const DUPLICATE_EMAIL_MESSAGE = "이미 등록된 이메일입니다. 아래 계정 목록에서 계정 상태와 권한을 확인해주세요.";
+const DUPLICATE_EMAIL_MESSAGE = "이미 사용 중인 이메일입니다. 다른 로그인 이메일을 입력해 주세요.";
 
 function isRole(value: string): value is AppRole {
   return (VALID_ROLES as string[]).includes(value);
@@ -70,6 +70,7 @@ function buildSummary(authUser: User, profile?: ProfileRow) {
     role: validRole,
     status,
     createdAt: profile?.created_at || authUser.created_at || null,
+    linkedStudents: Array.isArray((profile as any)?.parent_students) ? (profile as any).parent_students.map((link: any) => link.students).filter(Boolean) : [],
   };
 }
 
@@ -107,7 +108,7 @@ export async function GET() {
     const authUsers = await listAllAuthUsers(admin);
     const ids = authUsers.map((user) => user.id);
     const { data: profiles, error } = ids.length
-      ? await admin.from("profiles").select("id,email,full_name,phone,role,created_at").in("id", ids)
+      ? await admin.from("profiles").select("id,email,full_name,phone,role,created_at,parent_students(student_id,students(id,name,grade))").in("id", ids)
       : { data: [], error: null };
     if (error) throw error;
 
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
     const role = String(body.role || "parent");
     const studentIds = Array.isArray(body.studentIds) ? Array.from(new Set(body.studentIds.filter((value: unknown) => typeof value === "string" && value.trim()).map((value: string) => value.trim()))) : [];
 
-    if (!isValidEmail(email)) return adminJsonError("이메일 형식을 확인해주세요.", 400);
+    if (!isValidEmail(email)) return adminJsonError("이메일 형식을 확인해주세요. 교사 계정과 학부모 계정은 각각 별도의 로그인 이메일이 필요합니다.", 400);
     if (!fullName) return adminJsonError("이름을 입력해주세요.", 400);
     if (password.length < 8) return adminJsonError("비밀번호는 8자 이상이어야 합니다.", 400);
     if (!isRole(role)) return adminJsonError("권한 값이 올바르지 않습니다.", 400);
@@ -146,7 +147,7 @@ export async function POST(request: Request) {
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName, role } });
     if (createError || !created.user) {
       const message = createError?.message?.toLowerCase() || "";
-      if (message.includes("already") || message.includes("registered") || message.includes("exists") || message.includes("duplicate")) return adminJsonError(DUPLICATE_EMAIL_MESSAGE, 409);
+      if (message.includes("already") || message.includes("registered") || message.includes("exists") || message.includes("duplicate") || createError?.code === "email_exists") return adminJsonError(DUPLICATE_EMAIL_MESSAGE, 409);
       safeLog("Failed to create auth user", { email, code: createError?.code, status: createError?.status });
       return adminJsonError("계정 생성에 실패했습니다.", 400);
     }
