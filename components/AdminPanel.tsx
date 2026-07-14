@@ -21,7 +21,7 @@ type AccountSummary = {
   createdAt: string | null;
   linkedStudents?: Student[];
 };
-type CreatedAccount = { id: string; email: string; fullName: string; phone: string | null; role: Role; emailConfirmed: boolean; profileVerified: boolean };
+type CreatedAccount = AccountSummary;
 
 const roleLabels: Record<Role, string> = { admin: "관리자", teacher: "교사", parent: "학부모" };
 const statusLabels: Record<Status, string> = { active: "정상", missing_profile: "프로필 없음", missing_role: "권한 확인 필요", unconfirmed_email: "이메일 미확인", inconsistent: "정보 불일치" };
@@ -51,6 +51,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [repairRoles, setRepairRoles] = useState<Record<string, Role>>({});
   const [repairingId, setRepairingId] = useState<string | null>(null);
+  const [rolePending, setRolePending] = useState<Record<string, boolean>>({});
   const [resetTarget, setResetTarget] = useState<AccountSummary | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -94,10 +95,11 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       const result = await parseApiResponse(response);
       if (!response.ok || !result.account) throw new Error(result.error || "계정 생성 실패");
       const created = result.account;
+      setAccounts((current) => [created, ...current.filter((account) => account.id !== created.id)]);
       setFeedback({ type: "success", text: `${created.email} 계정을 만들고 선택한 권한을 배정했습니다.` });
       setEmail(""); setPassword(""); setFullName(""); setPhone(""); setRoles(["parent"]); setStudentIds([]);
-      await loadAccounts();
-      onChanged();
+      void loadAccounts();
+      void Promise.resolve(onChanged());
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "네트워크 오류로 계정 생성에 실패했습니다." });
     } finally {
@@ -117,7 +119,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       });
       const result = await parseApiResponse(response);
       if (!response.ok || !result.account) throw new Error(result.error || "계정 복구 실패");
-      setFeedback({ type: "success", text: `${result.account.email} 계정을 ${roleLabels[result.account.role]} 권한으로 복구했습니다. 비밀번호는 변경하지 않았습니다.` });
+      setFeedback({ type: "success", text: `${result.account.email} 계정을 ${roleLabels[result.account.role || nextRole]} 권한으로 복구했습니다. 비밀번호는 변경하지 않았습니다.` });
       await loadAccounts();
       onChanged();
     } catch (error) {
@@ -128,13 +130,21 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   }
 
   async function addRole(account: AccountSummary, nextRole: Role) {
+    if (rolePending[account.id]) return;
+    setRolePending((current) => ({ ...current, [account.id]: true }));
     setFeedback(null);
-    const response = await fetch(`/api/admin/users/${encodeURIComponent(account.id)}/roles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: nextRole }) });
-    const result = await parseApiResponse(response);
-    if (!response.ok) { setFeedback({ type: "error", text: result.error || "권한 추가에 실패했습니다." }); return; }
-    setFeedback({ type: "success", text: result.message || "기존 계정에 권한이 추가되었습니다." });
-    await loadAccounts();
-    onChanged();
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(account.id)}/roles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: nextRole }) });
+      const result = await parseApiResponse(response) as { error?: string; message?: string; roles?: Role[] };
+      if (!response.ok) { setFeedback({ type: "error", text: result.error || "권한 추가에 실패했습니다." }); return; }
+      const updatedRoles = result.roles || Array.from(new Set([...(account.roles || []), nextRole]));
+      setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, roles: updatedRoles, role: updatedRoles[0] || item.role, status: item.status === "missing_role" ? "active" : item.status } : item));
+      setFeedback({ type: "success", text: result.message || "기존 계정에 권한이 추가되었습니다." });
+      void loadAccounts();
+      void Promise.resolve(onChanged());
+    } finally {
+      setRolePending((current) => ({ ...current, [account.id]: false }));
+    }
   }
 
   function toggleRole(nextRole: Role) {
@@ -276,8 +286,8 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                 )}
                 {account.id !== userId && account.authExists && (
                   <div className="account-actions">
-                    {!account.roles?.includes("parent") && <button type="button" className="secondary" onClick={() => addRole(account, "parent")}>학부모 권한 및 학생 연결</button>}
-                    {!account.roles?.includes("teacher") && <button type="button" className="secondary" onClick={() => addRole(account, "teacher")}>교사 권한 추가</button>}
+                    {!account.roles?.includes("parent") && <button type="button" className="secondary" onClick={() => addRole(account, "parent")} disabled={Boolean(rolePending[account.id])}>학부모 권한 및 학생 연결</button>}
+                    {!account.roles?.includes("teacher") && <button type="button" className="secondary" onClick={() => addRole(account, "teacher")} disabled={Boolean(rolePending[account.id])}>교사 권한 추가</button>}
                     <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button><button type="button" className="danger-button" onClick={() => { setFeedback(null); setDeleteFeedback(null); setDeleteConfirm(""); setDeleteTarget(account); }}>계정 영구 삭제</button>
                   </div>
                 )}

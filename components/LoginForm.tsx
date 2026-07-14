@@ -26,18 +26,18 @@ export default function LoginForm() {
 
       if (signInError) {
         setError(signInError.message);
+        setLoading(false);
         return;
       }
 
       router.replace("/dashboard");
-      router.refresh();
+      return;
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
           : "로그인 요청을 준비하는 중 오류가 발생했습니다.",
       );
-    } finally {
       setLoading(false);
     }
   }
