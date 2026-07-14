@@ -6,6 +6,24 @@ import { APP_ROLES, type AppRole, isAppRole, normalizeRoles } from "@/lib/roles"
 
 type AccountStatus = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
 
+type SafeAccountListErrorCode = "PROFILE_ROLES_MIGRATION_REQUIRED" | "ACCOUNT_LIST_RELATION_ERROR" | "ACCOUNT_LIST_FAILED";
+type SupabaseErrorLike = { code?: string; message?: string; details?: string; hint?: string };
+
+const PROFILE_ROLES_RELATION = "profile_roles:profile_roles!profile_roles_profile_id_fkey(role)";
+const ACCOUNT_LIST_SELECT = `
+    id,
+    email,
+    full_name,
+    phone,
+    role,
+    created_at,
+    ${PROFILE_ROLES_RELATION},
+    parent_students(
+      student_id,
+      students(id,name,grade)
+    )
+  `;
+
 type ProfileRow = {
   id: string;
   email: string | null;
@@ -30,6 +48,34 @@ function isValidEmail(email: string) {
 
 function safeLog(message: string, details?: Record<string, unknown>) {
   console.error(message, details);
+}
+
+function logSupabaseError(message: string, error: unknown) {
+  const supabaseError = error as SupabaseErrorLike;
+  safeLog(message, {
+    code: supabaseError?.code,
+    message: supabaseError?.message,
+    details: supabaseError?.details,
+    hint: supabaseError?.hint,
+  });
+}
+
+function accountListError(message: string, code: SafeAccountListErrorCode, status = 500) {
+  return NextResponse.json({ error: message, code }, { status });
+}
+
+function isProfileRolesMigrationError(error: unknown) {
+  const supabaseError = error as SupabaseErrorLike;
+  const code = supabaseError?.code || "";
+  const message = `${supabaseError?.message || ""} ${supabaseError?.details || ""} ${supabaseError?.hint || ""}`.toLowerCase();
+  return code === "42P01" || code === "PGRST205" || (message.includes("profile_roles") && (message.includes("does not exist") || message.includes("not find") || message.includes("schema cache")));
+}
+
+function isRelationError(error: unknown) {
+  const supabaseError = error as SupabaseErrorLike;
+  const code = supabaseError?.code || "";
+  const message = `${supabaseError?.message || ""} ${supabaseError?.details || ""} ${supabaseError?.hint || ""}`.toLowerCase();
+  return code === "PGRST200" || code === "PGRST201" || message.includes("relationship") || message.includes("ambiguous");
 }
 
 function toAccount(profile: ProfileRow, authUser: User, profileVerified = true) {
@@ -107,16 +153,35 @@ export async function GET() {
     const admin = createAdminClient();
     const authUsers = await listAllAuthUsers(admin);
     const ids = authUsers.map((user) => user.id);
+
+    const { error: profileRolesError } = await admin.from("profile_roles").select("profile_id,assigned_by").limit(1);
+    if (profileRolesError) {
+      logSupabaseError("Failed to verify profile_roles migration before listing admin accounts", profileRolesError);
+      if (isProfileRolesMigrationError(profileRolesError)) {
+        return accountListError("다중 권한 데이터베이스 설정이 아직 적용되지 않았습니다. 관리자에게 문의해 주세요.", "PROFILE_ROLES_MIGRATION_REQUIRED");
+      }
+      return accountListError("계정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", "ACCOUNT_LIST_FAILED");
+    }
+
     const { data: profiles, error } = ids.length
-      ? await admin.from("profiles").select("id,email,full_name,phone,role,created_at,profile_roles(role),parent_students(student_id,students(id,name,grade))").in("id", ids)
+      ? await admin.from("profiles").select(ACCOUNT_LIST_SELECT).in("id", ids)
       : { data: [], error: null };
-    if (error) throw error;
+    if (error) {
+      logSupabaseError("Failed to query admin account profiles", error);
+      if (isProfileRolesMigrationError(error)) {
+        return accountListError("다중 권한 데이터베이스 설정이 아직 적용되지 않았습니다. 관리자에게 문의해 주세요.", "PROFILE_ROLES_MIGRATION_REQUIRED");
+      }
+      if (isRelationError(error)) {
+        return accountListError("계정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", "ACCOUNT_LIST_RELATION_ERROR");
+      }
+      return accountListError("계정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", "ACCOUNT_LIST_FAILED");
+    }
 
     const profileMap = new Map((profiles as ProfileRow[]).map((profile) => [profile.id, profile]));
     return NextResponse.json({ accounts: authUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id))) });
   } catch (error) {
-    safeLog("Failed to list admin accounts", { message: error instanceof Error ? error.message : "unknown" });
-    return adminJsonError("계정 목록을 불러오지 못했습니다.", 500);
+    logSupabaseError("Failed to list admin accounts", error);
+    return accountListError("계정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", "ACCOUNT_LIST_FAILED");
   }
 }
 
