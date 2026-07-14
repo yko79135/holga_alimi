@@ -137,10 +137,8 @@ export async function POST(request: Request) {
     if (!fullName) return adminJsonError("이름을 입력해주세요.", 400);
     if (password.length < 8) return adminJsonError("비밀번호는 8자 이상이어야 합니다.", 400);
     if (!isRole(role)) return adminJsonError("권한 값이 올바르지 않습니다.", 400);
-    if (role === "parent" && studentIds.length === 0) return adminJsonError("학부모 계정은 한 명 이상의 학생을 연결해야 합니다.", 400);
-
     const admin = createAdminClient();
-    if (role === "parent") {
+    if (role === "parent" && studentIds.length > 0) {
       const { data: students, error: studentError } = await admin.from("students").select("id").in("id", studentIds);
       if (studentError || (students || []).length !== studentIds.length) return adminJsonError("연결할 학생 정보를 확인해주세요.", 400);
     }
@@ -156,10 +154,10 @@ export async function POST(request: Request) {
     newUserId = created.user.id;
     const profile = await upsertAndVerifyProfile(admin, { userId: newUserId, email, fullName, phone, role });
 
-    if (role === "parent") {
+    if (role === "parent" && studentIds.length > 0) {
       const rows = studentIds.map((studentId) => ({ parent_id: newUserId, student_id: studentId }));
       const { error: linkError } = await admin.from("parent_students").insert(rows);
-      if (linkError) throw new Error("PARENT_LINK_FAILED");
+      if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
     }
 
     return NextResponse.json({ account: toAccount(profile, created.user) });
