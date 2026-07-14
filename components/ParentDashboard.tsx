@@ -188,7 +188,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         <div className="summary-box"><strong>{unreadCount}</strong><span>읽지 않은 알림</span></div>
       </aside>
 
-      <section className="content-card parent-warning-card"><div className="section-heading"><div><p className="eyebrow">WARNING STATUS</p><h2>경고 현황</h2></div></div><div className="sent-list">{warningRows.length ? warningRows.map((w:any)=><article className="sent-card" key={w.id || `${w.student_id}-${w.created_at}`}><span className="tag warning">경고</span><h3>{Array.isArray(w.students)?w.students[0]?.name:w.students?.name} · {w.entry_type === "grace_adjustment" ? "은혜의 희월" : w.warning_date}</h3><p>변경값 {w.delta > 0 ? "+" : ""}{w.delta} · {new Date(w.created_at).toLocaleString("ko-KR")}</p>{w.parent_visible_reason && <p className="sent-preview">{w.parent_visible_reason}</p>}</article>) : <p className="muted">표시할 경고 내역이 없습니다.</p>}</div></section>
+      <section className="content-card parent-warning-card"><div className="section-heading"><div><p className="eyebrow">WARNING STATUS</p><h2>경고 현황</h2></div></div><div className="sent-list">{warningRows.length ? warningRows.map((w:any)=><article className="sent-card" key={w.id || `${w.student_id}-${w.created_at}`}><span className="tag warning">경고</span><h3>{w.entry_type === "grace_adjustment" ? "은혜의 희월" : w.warning_date}</h3><p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>{w.parent_visible_reason && <p className="sent-preview">{w.parent_visible_reason}</p>}</article>) : <p className="muted">표시할 경고 내역이 없습니다.</p>}</div></section>
 
       <section className="content-card">
         <div className="section-heading">

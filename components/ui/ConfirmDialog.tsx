@@ -10,12 +10,13 @@ type ConfirmDialogProps = {
   confirmLabel: string;
   cancelLabel?: string;
   pending?: boolean;
+  confirmDisabled?: boolean;
   variant?: "default" | "danger";
   onConfirm: () => void;
   onClose: () => void;
 };
 
-export default function ConfirmDialog({ open, title, eyebrow = "CONFIRM", children, confirmLabel, cancelLabel = "취소", pending = false, variant = "default", onConfirm, onClose }: ConfirmDialogProps) {
+export default function ConfirmDialog({ open, title, eyebrow = "CONFIRM", children, confirmLabel, cancelLabel = "취소", pending = false, confirmDisabled = false, variant = "default", onConfirm, onClose }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
 
@@ -51,7 +52,7 @@ export default function ConfirmDialog({ open, title, eyebrow = "CONFIRM", childr
         <p className="eyebrow">{eyebrow}</p>
         <h2 id="action-dialog-title">{title}</h2>
         <div className="action-dialog-body">{children}</div>
-        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={pending}>{cancelLabel}</button><button type="button" className={variant === "danger" ? "danger-button" : "primary"} onClick={onConfirm} disabled={pending}>{pending ? "저장 중..." : confirmLabel}</button></div>
+        <div className="modal-actions"><button type="button" className="secondary" onClick={onClose} disabled={pending}>{cancelLabel}</button><button type="button" className={variant === "danger" ? "danger-button" : "primary"} onClick={onConfirm} disabled={pending || confirmDisabled}>{pending ? "저장 중..." : confirmLabel}</button></div>
       </div>
     </div>
   );
