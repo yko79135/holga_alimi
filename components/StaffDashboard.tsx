@@ -2,10 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
+type ParentLink = { parentId: string; fullName: string; email: string; linkedStudents: Array<{ id: string; name: string; grade: string }> };
 type Profile = { id: string; full_name: string; email: string; role: string };
 type Notice = {
   id: string; type: string; title: string; body: string; target_scope: string; target_grade: string | null;
@@ -38,6 +40,10 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [loading, setLoading] = useState(false);
   const [studentName, setStudentName] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
+  const [studentParentId, setStudentParentId] = useState("");
+  const [parentLinks, setParentLinks] = useState<Record<string, ParentLink[]>>({});
+  const [parentSearch, setParentSearch] = useState<Record<string, string>>({});
+  const [linkingStudentId, setLinkingStudentId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false,
@@ -56,6 +62,32 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useLiveRefresh({
+    channelName: `staff-dashboard-${userId}-${role}`,
+    tables: [
+      { table: "notices" },
+      { table: "notice_students" },
+      { table: "notice_attachments" },
+      { table: "acknowledgements" },
+      { table: "students" },
+      { table: "parent_students" },
+      { table: "profiles" },
+    ],
+    onRefresh: load,
+  });
+
+  const loadStudentParents = useCallback(async (studentId: string) => {
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentId)}/parents`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학부모 연결 정보를 불러오지 못했습니다.");
+      setParentLinks((current) => ({ ...current, [studentId]: result.linkedParents || [] }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
+    }
+  }, []);
+
+  const parentProfiles = useMemo(() => profiles.filter((profile) => profile.role === "parent"), [profiles]);
 
   const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
   const confirmedTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
@@ -101,10 +133,17 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
     const supabase = createClient();
     setMessage("");
     setErrorMessage("");
-    const { error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim() });
+    const { data, error } = await supabase.from("students").insert({ name:studentName.trim(), grade:studentGrade.trim() }).select("id").single();
     if (error) { setErrorMessage(error.message); return; }
-    setMessage("학생을 추가했습니다.");
-    setStudentName(""); setStudentGrade(""); await load();
+    if (role === "admin" && studentParentId && data?.id) {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(data.id)}/parents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentId: studentParentId }) });
+      const result = await response.json();
+      if (!response.ok) { setErrorMessage(result.error || "학생은 추가했지만 학부모 연결에 실패했습니다."); }
+      else setMessage("학생을 추가하고 학부모 계정을 연결했습니다.");
+    } else {
+      setMessage("학생을 추가했습니다. 필요하면 학생 목록에서 학부모 계정을 연결하세요.");
+    }
+    setStudentName(""); setStudentGrade(""); setStudentParentId(""); await load();
   }
 
 
@@ -161,6 +200,34 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
     } catch (error) {
       setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "학생 삭제에 실패했습니다." });
     } finally { setDeleteSubmitting(false); }
+  }
+
+  async function linkParent(studentId: string, parentId: string) {
+    if (!parentId || linkingStudentId) return;
+    setLinkingStudentId(studentId); setErrorMessage(""); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentId)}/parents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학부모 계정 연결에 실패했습니다.");
+      setMessage(result.message || "학부모 계정이 학생과 연결되었습니다.");
+      await loadStudentParents(studentId);
+      await load();
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "학부모 계정 연결에 실패했습니다."); }
+    finally { setLinkingStudentId(null); }
+  }
+
+  async function unlinkParent(studentId: string, parentId: string) {
+    if (linkingStudentId) return;
+    setLinkingStudentId(studentId); setErrorMessage(""); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentId)}/parents?parentId=${encodeURIComponent(parentId)}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학부모 계정 연결 해제에 실패했습니다.");
+      setMessage(result.message || "학부모 계정 연결이 해제되었습니다.");
+      await loadStudentParents(studentId);
+      await load();
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "학부모 계정 연결 해제에 실패했습니다."); }
+    finally { setLinkingStudentId(null); }
   }
 
   function targetText(notice: Notice) {
@@ -236,9 +303,16 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
             <p className="eyebrow">STUDENT DIRECTORY</p><h2>학생 추가</h2>
             <label>학생 이름</label><input value={studentName} onChange={(e) => setStudentName(e.target.value)} required />
             <label>학년</label><input value={studentGrade} onChange={(e) => setStudentGrade(e.target.value)} placeholder="G7E" required />
+            {role === "admin" && <><label>학부모 계정 연결 (선택)</label><select value={studentParentId} onChange={(e) => setStudentParentId(e.target.value)}><option value="">나중에 연결</option>{parentProfiles.map((parent) => <option key={parent.id} value={parent.id}>{parent.full_name || parent.email} · {parent.email}</option>)}</select></>}
             <button className="primary">학생 저장</button>{message && <p className="success-message">{message}</p>}{errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
           </form>
-          <div className="content-card"><h2>학생 목록</h2><div className="directory-list">{students.map((student) => <div key={student.id}><span className="avatar">{student.name[0]}</span><p><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></p>{role === "admin" && <button type="button" className="danger-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button>}</div>)}</div></div>
+          <div className="content-card"><h2>학생 목록</h2><div className="directory-list">{students.map((student) => {
+            const linked = parentLinks[student.id] || [];
+            const query = (parentSearch[student.id] || "").toLowerCase();
+            const linkedIds = new Set(linked.map((parent) => parent.parentId));
+            const candidates = parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8);
+            return <div key={student.id} className="student-admin-card"><span className="avatar">{student.name[0]}</span><p><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></p>{role === "admin" && <div className="parent-link-box"><button type="button" className="secondary" onClick={() => loadStudentParents(student.id)}>학부모 계정 연결</button>{linked.length > 0 && <div className="linked-parent-list">{linked.map((parent) => <span className="pill" key={parent.parentId}>{parent.fullName || parent.email}<button type="button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={linkingStudentId === student.id}>×</button></span>)}</div>}<input placeholder="학부모 이름 또는 이메일 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="account-list compact">{candidates.map((parent) => <button type="button" className="secondary" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={linkingStudentId === student.id}>{parent.full_name || parent.email} · {parent.email}</button>)}{!candidates.length && <small>연결할 학부모 계정이 없습니다.</small>}</div>}<button type="button" className="danger-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button></div>}</div>;
+          })}</div></div>
         </section>
       )}
 

@@ -8,3 +8,18 @@ self.addEventListener('notificationclick', event => {
   const url = new URL(event.notification.data?.url || '/dashboard', self.location.origin).href;
   event.waitUntil((async () => { const all = await clients.matchAll({ type: 'window', includeUncontrolled: true }); for (const client of all) { if ('focus' in client) { await client.focus(); if ('navigate' in client) return client.navigate(url); } } return clients.openWindow(url); })());
 });
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  const isDynamicPortalData = url.origin === self.location.origin && (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/dashboard') ||
+    url.pathname.startsWith('/account') ||
+    url.pathname.startsWith('/login')
+  );
+  if (isDynamicPortalData) {
+    event.respondWith(fetch(request));
+  }
+});

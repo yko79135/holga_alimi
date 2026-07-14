@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
 import { useSearchParams } from "next/navigation";
 
@@ -67,11 +68,29 @@ export default function ParentDashboard({ userId }: { userId: string }) {
       return row.students ? [row.students] : [];
     });
     setStudents(studentRows as Student[]);
-    if (!error) setNotices((noticeRows || []) as unknown as Notice[]);
+    if (!error) {
+      const nextNotices = (noticeRows || []) as unknown as Notice[];
+      setNotices(nextNotices);
+      setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
+    } else {
+      setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
+    }
     setLoading(false);
   }, [userId]);
 
   useEffect(() => { void load(); }, [load]);
+  useLiveRefresh({
+    channelName: `parent-dashboard-${userId}`,
+    tables: [
+      { table: "notices" },
+      { table: "notice_students" },
+      { table: "notice_attachments" },
+      { table: "acknowledgements", filter: `parent_id=eq.${userId}` },
+      { table: "parent_students", filter: `parent_id=eq.${userId}` },
+      { table: "students" },
+    ],
+    onRefresh: load,
+  });
   useEffect(() => { const id = searchParams.get("notice"); if (id && notices.length && !selected) { const n = notices.find((notice) => notice.id === id); if (n) void openNotice(n); } }, [searchParams, notices, selected]);
 
   const unreadCount = useMemo(
