@@ -23,8 +23,8 @@ export async function resolveNoticeRecipientIds(notice: Notice) {
   let ids: string[] = [];
 
   if (notice.target_scope === "school") {
-    const { data } = await admin.from("profiles").select("id").eq("role", "parent");
-    ids = (data || []).map((r: any) => r.id);
+    const { data } = await admin.from("profile_roles").select("profile_id").eq("role", "parent");
+    ids = (data || []).map((r: any) => r.profile_id);
   } else if (notice.target_scope === "grade") {
     const { data } = await admin.from("parent_students").select("parent_id,students!inner(grade)").eq("students.grade", notice.target_grade);
     ids = (data || []).map((r: any) => r.parent_id);

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendNoticePushes } from "@/lib/push/send";
+import { userIsStaff, getUserRoles } from "@/lib/roles-server";
+import { effectiveStaffRole } from "@/lib/roles";
 import { buildWarningNotice, changeType } from "@/lib/warnings/format";
 import { buildWarningReasonTemplate, hasMeaningfulReasonAfterTemplate, warningDelta, warningReasonErrorMessage } from "@/lib/warnings/reasons";
 import type { WarningCellChange } from "@/lib/warnings/types";
@@ -50,15 +52,11 @@ async function staff(requestId: string): Promise<StaffAuth | { e: NextResponse }
   if (userError || !user) {
     return { e: NextResponse.json({ error: "세션이 만료되었습니다. 다시 로그인해 주세요." }, { status: 401 }) };
   }
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profileError || !profile) {
-    logWarningSaveDiagnostic({ requestId, operation: "select", table: "profiles", userId: user.id, saveMethod: "authenticated-rls-insert", errorCode: profileError?.code, errorMessage: profileError?.message });
-    return { e: NextResponse.json({ error: "권한을 확인할 수 없습니다." }, { status: 403 }) };
-  }
-  if (!["admin", "teacher"].includes(profile.role)) {
+  const roles = await getUserRoles(supabase, user.id);
+  if (!await userIsStaff(supabase, user.id)) {
     return { e: NextResponse.json({ error: "교사 또는 관리자 권한이 필요합니다." }, { status: 403 }) };
   }
-  return { supabase, user: { id: user.id }, role: profile.role };
+  return { supabase, user: { id: user.id }, role: effectiveStaffRole(roles) || "teacher" };
 }
 
 function monthTotal(entries: any[], studentId: string, month: number) {

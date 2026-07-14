@@ -70,7 +70,7 @@ export async function POST(request: Request, context: Params) {
   const admin = createAdminClient();
   const [{ data: student }, { data: parent }] = await Promise.all([
     admin.from("students").select("id").eq("id", studentId).maybeSingle(),
-    admin.from("profiles").select("id,role").eq("id", normalizedParentId).eq("role", "parent").maybeSingle(),
+    admin.from("profile_roles").select("profile_id").eq("profile_id", normalizedParentId).eq("role", "parent").maybeSingle(),
   ]);
   if (!student) return adminJsonError("학생을 찾을 수 없습니다.", 404);
   if (!parent) return adminJsonError("학부모 계정을 찾을 수 없습니다.", 404);

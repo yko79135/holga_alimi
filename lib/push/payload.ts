@@ -5,7 +5,7 @@ export function buildSafeNoticePayload(notice: { id: string; target_scope: strin
     title: "홀가 학부모 포털",
     body: individual ? "새로운 개별 알림이 도착했습니다. 앱에서 로그인하여 확인해주세요." : "새로운 학교 알림이 도착했습니다. 앱에서 확인해주세요.",
     noticeId: notice.id,
-    url: `/dashboard?notice=${encodeURIComponent(notice.id)}`,
+    url: `/dashboard?view=parent&notice=${encodeURIComponent(notice.id)}`,
     category: individual ? "individual" : "general",
   };
 }

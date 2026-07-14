@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
+import { APP_ROLES, type AppRole, isAppRole, normalizeRoles } from "@/lib/roles";
 
-type AppRole = "admin" | "teacher" | "parent";
 type AccountStatus = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
 
 type ProfileRow = {
@@ -15,12 +15,10 @@ type ProfileRow = {
   created_at: string | null;
 };
 
-const VALID_ROLES: AppRole[] = ["admin", "teacher", "parent"];
+const VALID_ROLES: AppRole[] = APP_ROLES;
 const DUPLICATE_EMAIL_MESSAGE = "이미 사용 중인 이메일입니다. 다른 로그인 이메일을 입력해 주세요.";
 
-function isRole(value: string): value is AppRole {
-  return (VALID_ROLES as string[]).includes(value);
-}
+function isRole(value: string): value is AppRole { return isAppRole(value); }
 
 function normalizeEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -41,6 +39,7 @@ function toAccount(profile: ProfileRow, authUser: User, profileVerified = true) 
     fullName: profile.full_name || "",
     phone: profile.phone,
     role: profile.role as AppRole,
+    roles: (profile as any).roles || [profile.role as AppRole],
     emailConfirmed: Boolean(authUser.email_confirmed_at),
     profileVerified,
   };
@@ -68,6 +67,7 @@ function buildSummary(authUser: User, profile?: ProfileRow) {
     profileExists: Boolean(profile),
     emailConfirmed: Boolean(authUser.email_confirmed_at),
     role: validRole,
+    roles: Array.isArray((profile as any)?.profile_roles) ? normalizeRoles((profile as any).profile_roles.map((r: any) => r.role)) : validRole ? [validRole] : [],
     status,
     createdAt: profile?.created_at || authUser.created_at || null,
     linkedStudents: Array.isArray((profile as any)?.parent_students) ? (profile as any).parent_students.map((link: any) => link.students).filter(Boolean) : [],
@@ -108,7 +108,7 @@ export async function GET() {
     const authUsers = await listAllAuthUsers(admin);
     const ids = authUsers.map((user) => user.id);
     const { data: profiles, error } = ids.length
-      ? await admin.from("profiles").select("id,email,full_name,phone,role,created_at,parent_students(student_id,students(id,name,grade))").in("id", ids)
+      ? await admin.from("profiles").select("id,email,full_name,phone,role,created_at,profile_roles(role),parent_students(student_id,students(id,name,grade))").in("id", ids)
       : { data: [], error: null };
     if (error) throw error;
 
@@ -131,20 +131,21 @@ export async function POST(request: Request) {
     const password = String(body.password || "");
     const fullName = String(body.fullName || "").trim();
     const phone = String(body.phone || "").trim();
-    const role = String(body.role || "parent");
+    const requestedRoles = normalizeRoles(body.roles || body.role || "parent");
+    const primaryRole = requestedRoles[0] || "parent";
     const studentIds = Array.isArray(body.studentIds) ? Array.from(new Set(body.studentIds.filter((value: unknown) => typeof value === "string" && value.trim()).map((value: string) => value.trim()))) : [];
 
-    if (!isValidEmail(email)) return adminJsonError("이메일 형식을 확인해주세요. 교사 계정과 학부모 계정은 각각 별도의 로그인 이메일이 필요합니다.", 400);
+    if (!isValidEmail(email)) return adminJsonError("이메일 형식을 확인해주세요. 하나의 로그인 이메일에 여러 권한을 배정할 수 있습니다.", 400);
     if (!fullName) return adminJsonError("이름을 입력해주세요.", 400);
     if (password.length < 8) return adminJsonError("비밀번호는 8자 이상이어야 합니다.", 400);
-    if (!isRole(role)) return adminJsonError("권한 값이 올바르지 않습니다.", 400);
+    if (!requestedRoles.length) return adminJsonError("하나 이상의 권한을 선택해주세요.", 400);
     const admin = createAdminClient();
-    if (role === "parent" && studentIds.length > 0) {
+    if (requestedRoles.includes("parent") && studentIds.length > 0) {
       const { data: students, error: studentError } = await admin.from("students").select("id").in("id", studentIds);
       if (studentError || (students || []).length !== studentIds.length) return adminJsonError("연결할 학생 정보를 확인해주세요.", 400);
     }
 
-    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName, role } });
+    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName, role: primaryRole } });
     if (createError || !created.user) {
       const message = createError?.message?.toLowerCase() || "";
       if (message.includes("already") || message.includes("registered") || message.includes("exists") || message.includes("duplicate") || createError?.code === "email_exists") return adminJsonError(DUPLICATE_EMAIL_MESSAGE, 409);
@@ -153,9 +154,13 @@ export async function POST(request: Request) {
     }
 
     newUserId = created.user.id;
-    const profile = await upsertAndVerifyProfile(admin, { userId: newUserId, email, fullName, phone, role });
+    const profile = await upsertAndVerifyProfile(admin, { userId: newUserId, email, fullName, phone, role: primaryRole });
+    const roleRows = requestedRoles.map((role) => ({ profile_id: newUserId, role, assigned_by: auth.user.id }));
+    const { error: roleError } = await admin.from("profile_roles").upsert(roleRows, { onConflict: "profile_id,role" });
+    if (roleError) throw new Error("ROLE_ASSIGN_FAILED");
+    (profile as any).roles = requestedRoles;
 
-    if (role === "parent" && studentIds.length > 0) {
+    if (requestedRoles.includes("parent") && studentIds.length > 0) {
       const rows = studentIds.map((studentId) => ({ parent_id: newUserId, student_id: studentId }));
       const { error: linkError } = await admin.from("parent_students").insert(rows);
       if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
@@ -170,6 +175,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "";
     if (message === "PROFILE_UPSERT_FAILED") return adminJsonError("프로필 생성에 실패했습니다.", 500);
     if (message === "PROFILE_VERIFICATION_FAILED") return adminJsonError("계정 검증에 실패했습니다.", 500);
+    if (message === "ROLE_ASSIGN_FAILED") return adminJsonError("권한 배정에 실패했습니다.", 500);
     if (message === "PARENT_LINK_FAILED") return adminJsonError("학부모-학생 연결에 실패했습니다.", 500);
     return adminJsonError("계정 생성 중 오류가 발생했습니다.", 500);
   }
