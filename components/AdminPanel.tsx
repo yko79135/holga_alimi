@@ -18,6 +18,7 @@ type AccountSummary = {
   role: Role | null;
   status: Status;
   createdAt: string | null;
+  linkedStudents?: Student[];
 };
 type CreatedAccount = { id: string; email: string; fullName: string; phone: string | null; role: Role; emailConfirmed: boolean; profileVerified: boolean };
 
@@ -105,7 +106,6 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
 
   async function repairAccount(account: AccountSummary) {
     const nextRole = repairRoles[account.id] || account.role || "teacher";
-    if (account.role === "admin" && nextRole !== "admin" && !window.confirm("다른 관리자 계정의 권한을 변경하시겠습니까?")) return;
     setRepairingId(account.id);
     setFeedback(null);
     try {
@@ -124,6 +124,17 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     } finally {
       setRepairingId(null);
     }
+  }
+
+  function startSeparateAccount(account: AccountSummary, nextRole: Role) {
+    setFullName(account.fullName || "");
+    setPhone(account.phone || "");
+    setRole(nextRole);
+    setEmail("");
+    setPassword("");
+    setStudentIds([]);
+    setFeedback({ type: "success", text: nextRole === "parent" ? "이름을 미리 채웠습니다. 학부모 계정은 교사 계정과 별도의 로그인 이메일이 필요합니다." : "이름을 미리 채웠습니다. 교사 계정은 학부모 계정과 별도의 로그인 이메일이 필요합니다." });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function toggleStudent(id: string) {
@@ -202,6 +213,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       <form className="form-panel" onSubmit={submit}>
         <p className="eyebrow">ACCOUNT MANAGEMENT</p>
         <h2>사용자 계정 발급</h2>
+        <p className="muted">교사 계정과 학부모 계정은 각각 독립된 로그인 계정입니다. 교사 계정과 학부모 계정은 각각 별도의 로그인 이메일이 필요합니다.</p>
         <div className="two-columns">
           <div><label>이름</label><input value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div><label>권한</label><select value={role} onChange={(e) => setRole(e.target.value as Role)}><option value="parent">학부모</option><option value="teacher">교사</option><option value="admin">관리자</option></select></div>
@@ -240,7 +252,9 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                 <div>
                   <strong>{account.fullName || "이름 없음"}</strong>
                   <small>{account.email}</small>
-                  <small>{account.role ? roleLabels[account.role] : "권한 없음"} · {statusLabels[account.status]}</small>
+                  <span className={`role-badge role-${account.role || "unknown"}`}>{account.role ? roleLabels[account.role] : "권한 없음"}</span>
+                  <small>{statusLabels[account.status]}</small>
+                  {account.role === "parent" && <small>연결 학생: {account.linkedStudents?.length ? account.linkedStudents.map((student) => `${student.grade} ${student.name}`).join(", ") : "없음"}</small>}
                 </div>
                 <div className="account-meta">
                   <span className="pill">이메일 {account.emailConfirmed ? "확인됨" : "미확인"}</span>
@@ -258,6 +272,8 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                 )}
                 {account.id !== userId && account.authExists && (
                   <div className="account-actions">
+                    {account.role === "teacher" && <button type="button" className="secondary" onClick={() => startSeparateAccount(account, "parent")}>학부모 계정 추가</button>}
+                    {account.role === "parent" && <button type="button" className="secondary" onClick={() => startSeparateAccount(account, "teacher")}>교사 계정 추가</button>}
                     <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button><button type="button" className="danger-button" onClick={() => { setFeedback(null); setDeleteFeedback(null); setDeleteConfirm(""); setDeleteTarget(account); }}>계정 영구 삭제</button>
                   </div>
                 )}
