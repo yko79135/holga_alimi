@@ -46,6 +46,12 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [parentSearch, setParentSearch] = useState<Record<string, string>>({});
   const [expandedLinkPanel, setExpandedLinkPanel] = useState<Record<string, boolean>>({});
   const [linkingStudentId, setLinkingStudentId] = useState<string | null>(null);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentGradeFilter, setStudentGradeFilter] = useState("");
+  const [parentStatusFilter, setParentStatusFilter] = useState("all");
+  const [studentStatusFilter, setStudentStatusFilter] = useState("active");
+  const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   const [form, setForm] = useState({
     type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false,
@@ -91,7 +97,36 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
 
   const parentProfiles = useMemo(() => profiles.filter((profile) => profile.role === "parent"), [profiles]);
 
+  useEffect(() => { if (role !== "admin") return; students.forEach((student) => { if (!parentLinks[student.id]) void loadStudentParents(student.id); }); }, [role, students, parentLinks, loadStudentParents]);
+
   const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
+
+  const filteredStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    return students.filter((student) => {
+      const linked = parentLinks[student.id] || [];
+      const haystack = `${student.name} ${student.grade} ${linked.map((parent) => `${parent.fullName} ${parent.email}`).join(" ")}`.toLowerCase();
+      if (query && !haystack.includes(query)) return false;
+      if (studentGradeFilter && student.grade !== studentGradeFilter) return false;
+      if (parentStatusFilter === "linked" && linked.length === 0) return false;
+      if (parentStatusFilter === "unlinked" && linked.length > 0) return false;
+      if (studentStatusFilter === "active" && !student.active) return false;
+      if (studentStatusFilter === "inactive" && student.active) return false;
+      return true;
+    });
+  }, [students, parentLinks, studentSearch, studentGradeFilter, parentStatusFilter, studentStatusFilter]);
+
+  const groupedStudents = useMemo(() => filteredStudents.reduce<Record<string, Student[]>>((groups, student) => {
+    const key = student.grade || "미지정";
+    groups[key] = [...(groups[key] || []), student];
+    return groups;
+  }, {}), [filteredStudents]);
+
+  useEffect(() => {
+    if (studentGradeFilter) setExpandedGrades((current) => ({ ...current, [studentGradeFilter]: true }));
+    if (studentSearch.trim()) setExpandedGrades((current) => Object.fromEntries(Object.keys(groupedStudents).map((grade) => [grade, true])));
+  }, [studentGradeFilter, studentSearch, groupedStudents]);
+
   const confirmedTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
   const replyTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.parent_reply).length, 0);
 
@@ -305,65 +340,65 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       {tab === "warnings" && <WarningManager role={role} />}
 
       {tab === "students" && (
-        <section className="panel-grid">
-          <form className="form-panel" onSubmit={addStudent}>
+        <section className="student-management-layout">
+          <div className="student-management-toolbar" role="region" aria-label="학생 관리 필터">
+            <label>학생 검색<input value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} placeholder="학생, 학년, 학부모 이름/이메일" /></label>
+            <label>학년<select value={studentGradeFilter} onChange={(e) => setStudentGradeFilter(e.target.value)}><option value="">전체 학년</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select></label>
+            <label>학부모 연결 상태<select value={parentStatusFilter} onChange={(e) => setParentStatusFilter(e.target.value)}><option value="all">전체</option><option value="linked">연결됨</option><option value="unlinked">연결되지 않음</option></select></label>
+            <label>상태<select value={studentStatusFilter} onChange={(e) => setStudentStatusFilter(e.target.value)}><option value="all">전체</option><option value="active">활성</option><option value="inactive">비활성</option></select></label>
+            <span className="pill">검색 결과 {filteredStudents.length}명</span>
+            <button type="button" className="primary" onClick={() => document.getElementById("student-add-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}>학생 추가</button>
+            <button type="button" className="secondary" onClick={() => setExpandedGrades(Object.fromEntries(Object.keys(groupedStudents).map((grade) => [grade, true])))}>모두 펼치기</button>
+            <button type="button" className="secondary" onClick={() => setExpandedGrades(Object.fromEntries(Object.keys(groupedStudents).map((grade) => [grade, false])))}>모두 접기</button>
+          </div>
+          <form id="student-add-form" className="form-panel" onSubmit={addStudent}>
             <p className="eyebrow">STUDENT DIRECTORY</p><h2>학생 추가</h2>
-            <label>학생 이름</label><input value={studentName} onChange={(e) => setStudentName(e.target.value)} required />
-            <label>학년</label><input value={studentGrade} onChange={(e) => setStudentGrade(e.target.value)} placeholder="G7E" required />
+            <div className="two-columns"><div><label>학생 이름</label><input value={studentName} onChange={(e) => setStudentName(e.target.value)} required /></div><div><label>학년</label><input value={studentGrade} onChange={(e) => setStudentGrade(e.target.value)} placeholder="G7E" required /></div></div>
             {role === "admin" && <><label>학부모 계정 연결 (선택)</label><select value={studentParentId} onChange={(e) => setStudentParentId(e.target.value)}><option value="">나중에 연결</option>{parentProfiles.map((parent) => <option key={parent.id} value={parent.id}>{parent.full_name || parent.email} · {parent.email}</option>)}</select></>}
             <button className="primary">학생 저장</button>{message && <p className="success-message">{message}</p>}{errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
           </form>
           <div className="content-card student-directory-panel">
-            <div className="section-heading"><div><p className="eyebrow">STUDENT ACCOUNTS</p><h2>학생 목록</h2></div><span className="pill">{students.length}명</span></div>
-            <div className="student-admin-grid">{students.map((student) => {
-              const linked = parentLinks[student.id] || [];
-              const query = (parentSearch[student.id] || "").trim().toLowerCase();
-              const linkedIds = new Set(linked.map((parent) => parent.parentId));
-              const candidates = query ? parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8) : [];
-              const panelOpen = !!expandedLinkPanel[student.id];
-              const busy = linkingStudentId === student.id;
-              return <article key={student.id} className="student-card">
-                <header className="student-card__header">
-                  <div className="student-card__identity">
-                    <span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span>
-                    <div className="student-card__identity-text">
-                      <h3 title={student.name}>{student.name}</h3>
-                      <p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p>
-                    </div>
-                  </div>
-                </header>
-                {role === "admin" && <>
-                  <section className="student-card__parents" aria-labelledby={`parents-${student.id}`}>
-                    <div className="section-label-row"><span id={`parents-${student.id}`}>연결된 학부모</span><strong>{linked.length}명</strong></div>
-                    {linked.length > 0 ? <div className="linked-parent-list">{linked.map((parent) => {
-                      const label = parent.fullName || parent.email || "학부모";
-                      return <div className="linked-parent-row" key={parent.parentId}>
-                        <div className="linked-parent-details"><strong title={label}>{label}</strong>{parent.email && <span title={parent.email}>{parent.email}</span>}</div>
-                        <button type="button" className="unlink-button" aria-label={`${label} 학부모와 ${student.name} 학생 연결 해제`} onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button>
-                      </div>;
-                    })}</div> : <div className="linked-parent-empty"><strong>연결된 학부모 계정이 없습니다.</strong><span>아래에서 기존 학부모 계정을 검색해 연결할 수 있습니다.</span></div>}
-                  </section>
-                  <section className="student-card__link-form">
-                    {!panelOpen ? <button type="button" className="secondary student-link-toggle" onClick={() => { setExpandedLinkPanel((current) => ({ ...current, [student.id]: true })); void loadStudentParents(student.id); }}>학부모 계정 연결</button> : <div className="parent-link-panel">
-                      <div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label><button type="button" className="link-panel-close" onClick={() => setExpandedLinkPanel((current) => ({ ...current, [student.id]: false }))}>취소</button></div>
-                      <input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />
-                      {busy && <p className="link-status" role="status">학부모 계정 연결을 처리하는 중입니다.</p>}
-                      {query && <div className="parent-search-results" role="listbox" aria-label={`${student.name} 학생에게 연결할 학부모 검색 결과`}>
-                        {candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}>
-                          <span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em>
-                        </button>)}
-                        {!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 이 학생과 연결된 계정입니다.</p>}
-                      </div>}
-                    </div>}
-                  </section>
-                  <section className="student-card__danger" aria-label={`${student.name} 학생 위험 작업`}><button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button></section>
-                </>}
-              </article>;
+            <div className="section-heading"><div><p className="eyebrow">STUDENT ACCOUNTS</p><h2>학생 목록</h2></div><span className="pill">{filteredStudents.length}명</span></div>
+            <div className="student-grade-groups">{Object.entries(groupedStudents).map(([gradeName, gradeStudents]) => {
+              const unlinked = gradeStudents.filter((student) => !(parentLinks[student.id] || []).length).length;
+              const open = expandedGrades[gradeName] ?? Object.keys(groupedStudents).length <= 3;
+              return <section className="student-grade-section" key={gradeName}>
+                <button type="button" className="student-grade-header" aria-expanded={open} onClick={() => setExpandedGrades((current) => ({ ...current, [gradeName]: !open }))}>
+                  <span>{open ? "▾" : "▸"} {gradeName} · {gradeStudents.length}명 · 학부모 미연결 {unlinked}명</span>
+                </button>
+                {open && <div className="student-compact-list">{gradeStudents.map((student) => {
+                  const linked = parentLinks[student.id] || [];
+                  return <article className="student-compact-card" key={student.id}>
+                    <div><strong>{student.name}</strong><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></div>
+                    <div className="student-parent-summary">{linked.length ? linked.map((parent) => parent.fullName || parent.email).join(", ") : <span className="pill warning">학부모 미연결</span>}</div>
+                    <div className="student-compact-actions"><button type="button" className="secondary" onClick={() => { setSelectedStudent(student); void loadStudentParents(student.id); }}>수정</button>{role === "admin" && <button type="button" className="secondary" onClick={() => { setSelectedStudent(student); setExpandedLinkPanel((current) => ({ ...current, [student.id]: true })); void loadStudentParents(student.id); }}>학부모 연결</button>}{role === "admin" && <button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>삭제</button>}</div>
+                  </article>;
+                })}</div>}
+              </section>;
             })}</div>
-            {!students.length && <div className="empty-state">등록된 학생이 없습니다.</div>}
+            {!filteredStudents.length && <div className="empty-state">검색 조건에 맞는 학생이 없습니다.</div>}
           </div>
         </section>
       )}
+
+      {selectedStudent && role === "admin" && (() => {
+        const linked = parentLinks[selectedStudent.id] || [];
+        const query = (parentSearch[selectedStudent.id] || "").trim().toLowerCase();
+        const linkedIds = new Set(linked.map((parent) => parent.parentId));
+        const candidates = query ? parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8) : [];
+        const busy = linkingStudentId === selectedStudent.id;
+        return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setSelectedStudent(null); }}>
+          <div className="modal-card student-edit-modal" role="dialog" aria-modal="true" aria-labelledby="student-edit-title">
+            <button type="button" className="modal-close" aria-label="닫기" onClick={() => setSelectedStudent(null)} disabled={busy}>×</button>
+            <p className="eyebrow">STUDENT DETAIL</p><h2 id="student-edit-title">{selectedStudent.name} 수정</h2>
+            <dl className="reset-target-details"><div><dt>학생</dt><dd>{selectedStudent.name}</dd></div><div><dt>학년</dt><dd>{selectedStudent.grade}</dd></div><div><dt>상태</dt><dd>{selectedStudent.active ? "활성" : "비활성"}</dd></div></dl>
+            <section className="student-card__parents"><div className="section-label-row"><span>연결된 학부모</span><strong>{linked.length}명</strong></div>{linked.length ? <div className="linked-parent-list">{linked.map((parent) => <div className="linked-parent-row" key={parent.parentId}><div className="linked-parent-details"><strong>{parent.fullName || parent.email}</strong><span>{parent.email}</span></div><button type="button" className="unlink-button" onClick={() => unlinkParent(selectedStudent.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button></div>)}</div> : <div className="linked-parent-empty"><strong>학부모 미연결</strong><span>아래 검색으로 기존 학부모 계정을 연결하세요.</span></div>}</section>
+            <label htmlFor="modal-parent-search">학부모 계정 검색</label><input id="modal-parent-search" className="parent-search-input" placeholder="이름 또는 이메일" value={parentSearch[selectedStudent.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [selectedStudent.id]: e.target.value }))} />
+            {query && <div className="parent-search-results">{candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(selectedStudent.id, parent.id)} disabled={busy}><span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em></button>)}{!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 연결된 계정입니다.</p>}</div>}
+            <div className="modal-actions"><button type="button" className="secondary" onClick={() => setSelectedStudent(null)} disabled={busy}>닫기</button></div>
+          </div>
+        </div>;
+      })()}
 
       {tab === "accounts" && role === "admin" && <AdminPanel userId={userId} onChanged={load} />}
 

@@ -16,7 +16,7 @@ type ProfileRow = {
 };
 
 const VALID_ROLES: AppRole[] = ["admin", "teacher", "parent"];
-const DUPLICATE_EMAIL_MESSAGE = "이미 등록된 이메일입니다. 아래 계정 목록에서 계정 상태와 권한을 확인해주세요.";
+const DUPLICATE_EMAIL_MESSAGE = "이미 사용 중인 이메일입니다. 다른 로그인 이메일을 입력해 주세요.";
 
 function isRole(value: string): value is AppRole {
   return (VALID_ROLES as string[]).includes(value);
@@ -50,7 +50,7 @@ function verifyProfile(profile: ProfileRow | null, userId: string, email: string
   return Boolean(profile && profile.id === userId && (profile.email || "").toLowerCase() === email.toLowerCase() && profile.role === role);
 }
 
-function buildSummary(authUser: User, profile?: ProfileRow) {
+function buildSummary(authUser: User, profile?: ProfileRow, linkedStudents: Array<{ id: string; name: string; grade: string }> = []) {
   const validRole = profile?.role && isRole(profile.role) ? profile.role : null;
   let status: AccountStatus = "active";
 
@@ -70,6 +70,7 @@ function buildSummary(authUser: User, profile?: ProfileRow) {
     role: validRole,
     status,
     createdAt: profile?.created_at || authUser.created_at || null,
+    linkedStudents,
   };
 }
 
@@ -112,7 +113,17 @@ export async function GET() {
     if (error) throw error;
 
     const profileMap = new Map((profiles as ProfileRow[]).map((profile) => [profile.id, profile]));
-    return NextResponse.json({ accounts: authUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id))) });
+    const parentIds = (profiles as ProfileRow[]).filter((profile) => profile.role === "parent").map((profile) => profile.id);
+    const { data: parentRows, error: parentError } = parentIds.length
+      ? await admin.from("parent_students").select("parent_id,students(id,name,grade)").in("parent_id", parentIds)
+      : { data: [], error: null };
+    if (parentError) throw parentError;
+    const linkedByParent = new Map<string, Array<{ id: string; name: string; grade: string }>>();
+    for (const row of (parentRows || []) as Array<{ parent_id: string; students: { id: string; name: string; grade: string } | null }>) {
+      if (!row.students) continue;
+      linkedByParent.set(row.parent_id, [...(linkedByParent.get(row.parent_id) || []), row.students]);
+    }
+    return NextResponse.json({ accounts: authUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id), linkedByParent.get(authUser.id) || [])) });
   } catch (error) {
     safeLog("Failed to list admin accounts", { message: error instanceof Error ? error.message : "unknown" });
     return adminJsonError("계정 목록을 불러오지 못했습니다.", 500);

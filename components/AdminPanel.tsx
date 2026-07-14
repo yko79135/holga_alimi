@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 
 type Role = "admin" | "teacher" | "parent";
@@ -18,6 +19,7 @@ type AccountSummary = {
   role: Role | null;
   status: Status;
   createdAt: string | null;
+  linkedStudents?: Student[];
 };
 type CreatedAccount = { id: string; email: string; fullName: string; phone: string | null; role: Role; emailConfirmed: boolean; profileVerified: boolean };
 
@@ -58,6 +60,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
+  const [repairConfirm, setRepairConfirm] = useState<AccountSummary | null>(null);
 
   const loadAccounts = useCallback(async () => {
     setDirectoryLoading(true);
@@ -105,7 +108,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
 
   async function repairAccount(account: AccountSummary) {
     const nextRole = repairRoles[account.id] || account.role || "teacher";
-    if (account.role === "admin" && nextRole !== "admin" && !window.confirm("다른 관리자 계정의 권한을 변경하시겠습니까?")) return;
+    if (account.role === "admin" && nextRole !== "admin" && !repairConfirm) { setRepairConfirm(account); return; }
     setRepairingId(account.id);
     setFeedback(null);
     try {
@@ -201,7 +204,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     <section className="panel-grid">
       <form className="form-panel" onSubmit={submit}>
         <p className="eyebrow">ACCOUNT MANAGEMENT</p>
-        <h2>사용자 계정 발급</h2>
+        <h2>사용자 계정 발급</h2><p className="muted">교사 계정과 학부모 계정은 각각 별도의 로그인 이메일이 필요합니다. 같은 이름과 전화번호를 가진 별도 계정을 만들 수 있지만 로그인 이메일은 중복될 수 없습니다.</p>
         <div className="two-columns">
           <div><label>이름</label><input value={fullName} onChange={(e) => setFullName(e.target.value)} required /></div>
           <div><label>권한</label><select value={role} onChange={(e) => setRole(e.target.value as Role)}><option value="parent">학부모</option><option value="teacher">교사</option><option value="admin">관리자</option></select></div>
@@ -241,10 +244,12 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                   <strong>{account.fullName || "이름 없음"}</strong>
                   <small>{account.email}</small>
                   <small>{account.role ? roleLabels[account.role] : "권한 없음"} · {statusLabels[account.status]}</small>
+                  {account.role === "parent" && <small>연결 학생: {account.linkedStudents?.length ? account.linkedStudents.map((student) => `${student.grade} ${student.name}`).join(", ") : "없음"}</small>}
                 </div>
                 <div className="account-meta">
                   <span className="pill">이메일 {account.emailConfirmed ? "확인됨" : "미확인"}</span>
                   <span className="pill">프로필 {account.profileExists ? "확인됨" : "없음"}</span>
+                  <span className={`pill role-badge role-badge--${account.role || "none"}`}>{account.role ? roleLabels[account.role] : "권한 없음"}</span>
                   <span className="pill">{statusLabels[account.status]}</span>
                   {account.createdAt && <small>{new Date(account.createdAt).toLocaleString("ko-KR")}</small>}
                 </div>
@@ -258,7 +263,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                 )}
                 {account.id !== userId && account.authExists && (
                   <div className="account-actions">
-                    <button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button><button type="button" className="danger-button" onClick={() => { setFeedback(null); setDeleteFeedback(null); setDeleteConfirm(""); setDeleteTarget(account); }}>계정 영구 삭제</button>
+                    {account.role === "teacher" && <button type="button" className="secondary" onClick={() => { setFullName(account.fullName || ""); setPhone(account.phone || ""); setRole("parent"); setStudentIds([]); setEmail(""); setPassword(""); setFeedback({ type: "success", text: "학부모 계정 추가 양식을 준비했습니다. 반드시 다른 로그인 이메일을 입력하세요." }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>학부모 계정 추가</button>}<button type="button" className="secondary" onClick={() => { setFeedback(null); setResetFeedback(null); setResetTarget(account); }}>비밀번호 재설정</button><button type="button" className="danger-button" onClick={() => { setFeedback(null); setDeleteFeedback(null); setDeleteConfirm(""); setDeleteTarget(account); }}>계정 영구 삭제</button>
                   </div>
                 )}
               </article>
@@ -269,6 +274,8 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       </section>
 
 
+
+      <ConfirmDialog open={!!repairConfirm} title="관리자 권한 변경 확인" confirmLabel="권한 변경" pending={repairingId === repairConfirm?.id} onCancel={() => setRepairConfirm(null)} onConfirm={() => { const target = repairConfirm; setRepairConfirm(null); if (target) void repairAccount(target); }}><p>관리자 계정의 권한을 변경합니다. 마지막 관리자 보호 검사는 서버에서 다시 수행됩니다.</p></ConfirmDialog>
 
       {deleteTarget && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
