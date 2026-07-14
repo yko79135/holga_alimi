@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendNoticePushes } from "@/lib/push/send";
 import { buildWarningNotice, changeType } from "@/lib/warnings/format";
+import { buildWarningReasonTemplate, hasMeaningfulReasonAfterTemplate, warningDelta, warningReasonErrorMessage } from "@/lib/warnings/reasons";
 import type { WarningCellChange } from "@/lib/warnings/types";
 
 export const runtime = "nodejs";
@@ -101,6 +102,20 @@ export async function POST(req: Request) {
     }
   }
 
+  const submittedStudentsRes = await a.supabase.from("students").select("id,name").in("id", affectedStudentIds);
+  if (submittedStudentsRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "students", errorCode: submittedStudentsRes.error.code, errorMessage: submittedStudentsRes.error.message });
+  for (const change of changes) {
+    const student = (submittedStudentsRes.data || []).find((s: any) => s.id === change.studentId);
+    if (!student?.name) return NextResponse.json({ error: "학생 정보를 확인할 수 없습니다." }, { status: 400 });
+    const delta = warningDelta(Number(change.previousValue), Number(change.newValue));
+    if (delta === 0) continue;
+    const template = buildWarningReasonTemplate({ studentName: student.name, previousValue: Number(change.previousValue), newValue: Number(change.newValue), entryType: change.entryType });
+    const parentVisibleReason = String(change.parentVisibleReason || "").trim();
+    if (!hasMeaningfulReasonAfterTemplate(parentVisibleReason, template)) {
+      return NextResponse.json({ error: warningReasonErrorMessage(change.entryType, delta) }, { status: 400 });
+    }
+  }
+
   const existing = await a.supabase.from("warning_change_batches").select("id").eq("idempotency_key", idempotencyKey).maybeSingle();
   if (existing.error) return failure({ ...baseDiagnostic, operation: "select", table: "warning_change_batches", errorCode: existing.error.code, errorMessage: existing.error.message });
   if (existing.data) return NextResponse.json({ success: true, warning_saved: true, idempotent: true, message: "이미 처리된 변경사항입니다.", batch_id: existing.data.id, batchId: existing.data.id, affected_students: affectedStudentIds.length, inserted_entries: 0, notices_created: 0 });
@@ -122,7 +137,7 @@ export async function POST(req: Request) {
 
   const rows = changes.map((change) => {
     const delta = Number(change.newValue) - Number(change.previousValue);
-    return { batch_id: batchId, student_id: change.studentId, warning_date: change.entryType === "daily" ? change.date : null, academic_year: academicYear, semester, month, entry_type: change.entryType, change_type: changeType(delta, change.entryType), previous_value: Number(change.previousValue), new_value: Number(change.newValue), delta, parent_visible_reason: change.parentVisibleReason || null, teacher_note: change.teacherNote || null, author_id: a.user.id };
+    return { batch_id: batchId, student_id: change.studentId, warning_date: change.entryType === "daily" ? change.date : null, academic_year: academicYear, semester, month, entry_type: change.entryType, change_type: changeType(delta, change.entryType), previous_value: Number(change.previousValue), new_value: Number(change.newValue), delta, parent_visible_reason: String(change.parentVisibleReason || "").trim() || null, teacher_note: change.teacherNote || null, author_id: a.user.id };
   }).filter((row) => row.delta !== 0);
   if (!rows.length) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: "ZERO_DELTA_ROWS", errorMessage: "No non-zero warning entry rows were generated.", insertedRowCount: 0 });
 
@@ -130,19 +145,17 @@ export async function POST(req: Request) {
   if (entryRes.error || !entryRes.data) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: entryRes.error?.code, errorMessage: entryRes.error?.message, insertedRowCount: undefined });
   if (entryRes.data.length !== rows.length) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: "INSERTED_ROW_COUNT_MISMATCH", errorMessage: `Expected ${rows.length}, inserted ${entryRes.data.length}.`, insertedRowCount: entryRes.data.length });
 
-  const [studentsRes, allEntriesRes, linksRes] = await Promise.all([
-    a.supabase.from("students").select("id,name").in("id", affectedStudentIds),
+  const [allEntriesRes, linksRes] = await Promise.all([
     a.supabase.from("warning_entries").select("student_id,delta,month").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester),
     a.supabase.from("parent_students").select("student_id,parent_id").in("student_id", affectedStudentIds),
   ]);
-  if (studentsRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "students", errorCode: studentsRes.error.code, errorMessage: studentsRes.error.message, insertedRowCount: entryRes.data.length });
   if (allEntriesRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "warning_entries", errorCode: allEntriesRes.error.code, errorMessage: allEntriesRes.error.message, insertedRowCount: entryRes.data.length });
   if (linksRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "parent_students", errorCode: linksRes.error.code, errorMessage: linksRes.error.message, insertedRowCount: entryRes.data.length });
 
   let notices = 0, pushSent = 0, pushFailed = 0, recipients = 0;
   const missing: string[] = [];
   for (const studentId of affectedStudentIds) {
-    const student = (studentsRes.data || []).find((s: any) => s.id === studentId);
+    const student = (submittedStudentsRes.data || []).find((s: any) => s.id === studentId);
     const perStudentChanges = changes.filter((change) => change.studentId === studentId);
     const total = monthTotal(allEntriesRes.data || [], studentId, month);
     const content = buildWarningNotice(student?.name || "학생", perStudentChanges, total);

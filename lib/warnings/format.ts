@@ -14,8 +14,6 @@ export function buildWarningNotice(studentName: string, changes: WarningCellChan
   const title = positives.length && negatives.length ? "경고 내역이 업데이트되었습니다" : negatives.length ? "경고 내역이 정정되었습니다" : "경고 내역이 등록되었습니다";
   const reasons = Array.from(new Set(changes.map((c) => c.parentVisibleReason?.trim()).filter(Boolean))).join("\n");
   const lines = [`${studentName} 학생의 경고 내역이 ${negatives.length && !positives.length ? "정정" : "업데이트"}되었습니다.`, "", `${negatives.length && !positives.length ? "정정된 날짜" : "등록일"}: ${dates}`, `이번 달 경고 합계: ${monthlyTotal}`];
-  if (positives.length) lines.push(`추가된 경고: ${positives.reduce((s,c)=>s+c.newValue-c.previousValue,0)}`);
-  if (negatives.length) lines.push(`정정/감소: ${negatives.reduce((s,c)=>s+Math.abs(c.newValue-c.previousValue),0)}`);
   if (reasons) lines.push("", negatives.length && !positives.length ? "정정 사유:" : "사유:", reasons);
   lines.push("", "자세한 내용은 포털에서 확인해 주세요.");
   return { title, body: lines.join("\n") };
