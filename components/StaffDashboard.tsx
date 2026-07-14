@@ -44,6 +44,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [studentParentId, setStudentParentId] = useState("");
   const [parentLinks, setParentLinks] = useState<Record<string, ParentLink[]>>({});
   const [parentSearch, setParentSearch] = useState<Record<string, string>>({});
+  const [expandedLinkPanel, setExpandedLinkPanel] = useState<Record<string, boolean>>({});
   const [linkingStudentId, setLinkingStudentId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -211,6 +212,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "학부모 계정 연결에 실패했습니다.");
       setMessage(result.message || "학부모 계정이 학생과 연결되었습니다.");
+      setParentSearch((current) => ({ ...current, [studentId]: "" }));
+      setExpandedLinkPanel((current) => ({ ...current, [studentId]: false }));
       await loadStudentParents(studentId);
       await load();
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "학부모 계정 연결에 실패했습니다."); }
@@ -310,13 +313,55 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
             {role === "admin" && <><label>학부모 계정 연결 (선택)</label><select value={studentParentId} onChange={(e) => setStudentParentId(e.target.value)}><option value="">나중에 연결</option>{parentProfiles.map((parent) => <option key={parent.id} value={parent.id}>{parent.full_name || parent.email} · {parent.email}</option>)}</select></>}
             <button className="primary">학생 저장</button>{message && <p className="success-message">{message}</p>}{errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
           </form>
-          <div className="content-card"><h2>학생 목록</h2><div className="directory-list">{students.map((student) => {
-            const linked = parentLinks[student.id] || [];
-            const query = (parentSearch[student.id] || "").toLowerCase();
-            const linkedIds = new Set(linked.map((parent) => parent.parentId));
-            const candidates = parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8);
-            return <div key={student.id} className="student-admin-card"><span className="avatar">{student.name[0]}</span><p><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></p>{role === "admin" && <div className="parent-link-box"><button type="button" className="secondary" onClick={() => loadStudentParents(student.id)}>학부모 계정 연결</button>{linked.length > 0 && <div className="linked-parent-list">{linked.map((parent) => <span className="pill" key={parent.parentId}>{parent.fullName || parent.email}<button type="button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={linkingStudentId === student.id}>×</button></span>)}</div>}<input placeholder="학부모 이름 또는 이메일 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="account-list compact">{candidates.map((parent) => <button type="button" className="secondary" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={linkingStudentId === student.id}>{parent.full_name || parent.email} · {parent.email}</button>)}{!candidates.length && <small>연결할 학부모 계정이 없습니다.</small>}</div>}<button type="button" className="danger-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button></div>}</div>;
-          })}</div></div>
+          <div className="content-card student-directory-panel">
+            <div className="section-heading"><div><p className="eyebrow">STUDENT ACCOUNTS</p><h2>학생 목록</h2></div><span className="pill">{students.length}명</span></div>
+            <div className="student-admin-grid">{students.map((student) => {
+              const linked = parentLinks[student.id] || [];
+              const query = (parentSearch[student.id] || "").trim().toLowerCase();
+              const linkedIds = new Set(linked.map((parent) => parent.parentId));
+              const candidates = query ? parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8) : [];
+              const panelOpen = !!expandedLinkPanel[student.id];
+              const busy = linkingStudentId === student.id;
+              return <article key={student.id} className="student-card">
+                <header className="student-card__header">
+                  <div className="student-card__identity">
+                    <span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span>
+                    <div className="student-card__identity-text">
+                      <h3 title={student.name}>{student.name}</h3>
+                      <p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p>
+                    </div>
+                  </div>
+                </header>
+                {role === "admin" && <>
+                  <section className="student-card__parents" aria-labelledby={`parents-${student.id}`}>
+                    <div className="section-label-row"><span id={`parents-${student.id}`}>연결된 학부모</span><strong>{linked.length}명</strong></div>
+                    {linked.length > 0 ? <div className="linked-parent-list">{linked.map((parent) => {
+                      const label = parent.fullName || parent.email || "학부모";
+                      return <div className="linked-parent-row" key={parent.parentId}>
+                        <div className="linked-parent-details"><strong title={label}>{label}</strong>{parent.email && <span title={parent.email}>{parent.email}</span>}</div>
+                        <button type="button" className="unlink-button" aria-label={`${label} 학부모와 ${student.name} 학생 연결 해제`} onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button>
+                      </div>;
+                    })}</div> : <div className="linked-parent-empty"><strong>연결된 학부모 계정이 없습니다.</strong><span>아래에서 기존 학부모 계정을 검색해 연결할 수 있습니다.</span></div>}
+                  </section>
+                  <section className="student-card__link-form">
+                    {!panelOpen ? <button type="button" className="secondary student-link-toggle" onClick={() => { setExpandedLinkPanel((current) => ({ ...current, [student.id]: true })); void loadStudentParents(student.id); }}>학부모 계정 연결</button> : <div className="parent-link-panel">
+                      <div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label><button type="button" className="link-panel-close" onClick={() => setExpandedLinkPanel((current) => ({ ...current, [student.id]: false }))}>취소</button></div>
+                      <input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />
+                      {busy && <p className="link-status" role="status">학부모 계정 연결을 처리하는 중입니다.</p>}
+                      {query && <div className="parent-search-results" role="listbox" aria-label={`${student.name} 학생에게 연결할 학부모 검색 결과`}>
+                        {candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}>
+                          <span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em>
+                        </button>)}
+                        {!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 이 학생과 연결된 계정입니다.</p>}
+                      </div>}
+                    </div>}
+                  </section>
+                  <section className="student-card__danger" aria-label={`${student.name} 학생 위험 작업`}><button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>학생 영구 삭제</button></section>
+                </>}
+              </article>;
+            })}</div>
+            {!students.length && <div className="empty-state">등록된 학생이 없습니다.</div>}
+          </div>
         </section>
       )}
 
