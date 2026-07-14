@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null };
 type Ack = {
@@ -37,7 +37,10 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function ParentDashboard({ userId }: { userId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const closingNoticeIdRef = useRef<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selected, setSelected] = useState<Notice | null>(null);
@@ -78,7 +81,6 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     ],
     onRefresh: load,
   });
-  useEffect(() => { const id = searchParams.get("notice"); if (id && notices.length && !selected) { const n = notices.find((notice) => notice.id === id); if (n) void openNotice(n); } }, [searchParams, notices, selected]);
 
   const unreadCount = useMemo(
     () => notices.filter((notice) => !notice.acknowledgements?.[0]?.read_at).length,
@@ -102,7 +104,38 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     return names.join(", ") || "개별 학생";
   }
 
+  const closeNotice = useCallback(() => {
+    const noticeId = selected?.id || searchParams.get("notice");
+    if (noticeId) closingNoticeIdRef.current = noticeId;
+    setSelected(null);
+
+    if (!searchParams.has("notice")) return;
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("notice");
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams, selected?.id]);
+
+  useEffect(() => {
+    const id = searchParams.get("notice");
+    if (!id || id !== closingNoticeIdRef.current) closingNoticeIdRef.current = null;
+    if (!id || closingNoticeIdRef.current === id || !notices.length || selected?.id === id) return;
+    const notice = notices.find((item) => item.id === id);
+    if (notice) void openNotice(notice);
+  }, [searchParams, notices, selected?.id]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeNotice();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [closeNotice, selected]);
+
   async function openNotice(notice: Notice) {
+    closingNoticeIdRef.current = null;
     setMessage("");
     setSelected(notice);
     setReply(notice.acknowledgements?.[0]?.parent_reply || "");
@@ -155,7 +188,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="dashboard-layout">
+    <div className="dashboard-layout parent-dashboard">
       <aside className="sidebar-card">
         <p className="eyebrow">MY CHILDREN</p>
         <h2>연결된 학생</h2>
@@ -205,11 +238,11 @@ export default function ParentDashboard({ userId }: { userId: string }) {
       </section>
 
       {selected && (
-        <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
-          <article className="modal-card" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setSelected(null)}>×</button>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeNotice(); }}>
+          <article className="modal-card" role="dialog" aria-modal="true" aria-labelledby="parent-notice-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modal-close" aria-label="닫기" onClick={closeNotice}>×</button>
             <span className={`tag ${selected.type}`}>{typeLabels[selected.type] || selected.type}</span>
-            <h2>{selected.title}</h2>
+            <h2 id="parent-notice-title">{selected.title}</h2>
             <p className="modal-meta">대상: {recipientText(selected)} · {new Date(selected.published_at).toLocaleString("ko-KR")}</p>
             <div className="notice-body">{selected.body}</div>
             {!!selected.notice_attachments?.length && <div className="attachment-list">{selected.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
