@@ -6,6 +6,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
 import WarningManager from "@/components/warnings/WarningManager";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
+import AttendanceStats from "@/components/attendance/AttendanceStats";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
@@ -310,6 +311,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
         <button className={tab === "students" ? "active" : ""} onClick={() => setTab("students")}>학생 관리</button>
         <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>경고 관리</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 관리</button>
+        <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}>계정 관리</button>}
       </nav>
 
@@ -367,6 +369,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       {tab === "warnings" && <WarningManager role={role} />}
 
       {tab === "attendance" && <AttendanceManager role={role} />}
+
+      {tab === "attendance-stats" && <AttendanceStats role={role} />}
 
       {tab === "students" && (
         <section className="student-management-layout">
