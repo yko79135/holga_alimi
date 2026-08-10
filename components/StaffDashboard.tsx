@@ -34,6 +34,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [noticeDeleteTarget, setNoticeDeleteTarget] = useState<Notice | null>(null);
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<Notice[] | null>(null);
+  const [selectedNoticeIds, setSelectedNoticeIds] = useState<string[]>([]);
   const [studentDeleteTarget, setStudentDeleteTarget] = useState<Student | null>(null);
   const [studentPreview, setStudentPreview] = useState<StudentPreview | null>(null);
   const [confirmText, setConfirmText] = useState("");
@@ -214,10 +216,15 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   function closeDeleteModal() {
     if (deleteSubmitting) return;
     setNoticeDeleteTarget(null);
+    setBulkDeleteTargets(null);
     setStudentDeleteTarget(null);
     setStudentPreview(null);
     setConfirmText("");
     setDeleteFeedback(null);
+  }
+
+  function toggleNoticeSelection(id: string) {
+    setSelectedNoticeIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   }
 
   async function openStudentDelete(student: Student) {
@@ -245,6 +252,24 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       setMessage(result.message || "공지를 영구 삭제했습니다.");
       setNoticeDeleteTarget(null); setConfirmText("");
       setNotices((current) => current.filter((notice) => notice.id !== noticeDeleteTarget.id));
+      await load();
+    } catch (error) {
+      setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "공지 삭제에 실패했습니다." });
+    } finally { setDeleteSubmitting(false); }
+  }
+
+  async function bulkDeleteNotices() {
+    if (!bulkDeleteTargets?.length || deleteSubmitting || confirmText !== "삭제") return;
+    setDeleteSubmitting(true); setDeleteFeedback(null);
+    try {
+      const ids = bulkDeleteTargets.map((notice) => notice.id);
+      const response = await fetch("/api/admin/notices", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "공지 삭제에 실패했습니다.");
+      setMessage(result.message || "선택한 공지를 삭제했습니다.");
+      setNotices((current) => current.filter((notice) => !ids.includes(notice.id)));
+      setSelectedNoticeIds((current) => current.filter((id) => !ids.includes(id)));
+      setBulkDeleteTargets(null); setConfirmText("");
       await load();
     } catch (error) {
       setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "공지 삭제에 실패했습니다." });
@@ -349,15 +374,27 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
 
       {tab === "notices" && (
         <section className="content-card">
-          <div className="section-heading"><div><p className="eyebrow">SENT MESSAGES</p><h2>발송 및 응답 기록</h2></div><span className="pill">확인 완료 {confirmedTotal}건</span></div>
+          <div className="section-heading">
+            <div><p className="eyebrow">SENT MESSAGES</p><h2>발송 및 응답 기록</h2></div>
+            <div className="topbar-actions">
+              {selectedNoticeIds.length > 0 && <button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setBulkDeleteTargets(notices.filter((notice) => selectedNoticeIds.includes(notice.id))); }}>선택 삭제 ({selectedNoticeIds.length})</button>}
+              <span className="pill">확인 완료 {confirmedTotal}건</span>
+            </div>
+          </div>
           <div className="sent-list">
             {notices.map((notice) => {
               const replies = (notice.acknowledgements || []).filter((ack) => ack.parent_reply);
               return <article className="sent-card" key={notice.id}>
-                <div className="sent-top"><div><span className={`tag ${notice.type}`}>{typeLabels[notice.type]}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div><div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div></div>
+                <div className="sent-top">
+                  <div className="sent-top-main">
+                    <label className="notice-select"><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
+                    <div><span className={`tag ${notice.type}`}>{typeLabels[notice.type]}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div>
+                  </div>
+                  <div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
+                </div>
                 <p className="sent-preview">{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
-                {role === "admin" && <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>}
+                <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>
                 {replies.length > 0 && <div className="reply-log"><strong>학부모 답변</strong>{replies.map((ack,index) => <p key={index}>“{ack.parent_reply}”</p>)}</div>}
               </article>;
             })}
@@ -406,7 +443,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
 
       {tab === "accounts" && role === "admin" && <AdminPanel userId={userId} onChanged={load} />}
 
-      {(noticeDeleteTarget || studentDeleteTarget) && (
+      {(noticeDeleteTarget || studentDeleteTarget || bulkDeleteTargets) && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
           <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-modal-title">
             <button type="button" className="modal-close" aria-label="닫기" onClick={closeDeleteModal} disabled={deleteSubmitting}>×</button>
@@ -418,11 +455,15 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
             {studentDeleteTarget && <dl className="reset-target-details">
               <div><dt>학생</dt><dd>{studentPreview?.name || studentDeleteTarget.name}</dd></div><div><dt>학년</dt><dd>{studentPreview?.grade || studentDeleteTarget.grade}</dd></div><div><dt>학부모 연결</dt><dd>{studentPreview ? `${studentPreview.parentLinkCount}개` : "확인 중..."}</dd></div><div><dt>개별 공지</dt><dd>{studentPreview ? `${studentPreview.individualNoticeCount}개` : "확인 중..."}</dd></div>
             </dl>}
-            <p className="destructive-warning">{noticeDeleteTarget ? "읽음 기록, 확인, 답변, 학생 연결, 첨부파일이 모두 삭제됩니다." : "학부모/학생 연결이 삭제되며, 남은 대상 학생이 없는 개별 공지도 함께 삭제됩니다."}</p>
+            {bulkDeleteTargets && <>
+              <dl className="reset-target-details"><div><dt>선택한 공지</dt><dd>{bulkDeleteTargets.length}개</dd></div></dl>
+              <div className="attachment-list">{bulkDeleteTargets.map((notice) => <div className="attachment-item" key={notice.id}><span>{typeLabels[notice.type]} · {notice.title}</span></div>)}</div>
+            </>}
+            <p className="destructive-warning">{bulkDeleteTargets ? "선택한 공지들의 읽음 기록, 확인, 답변, 학생 연결, 첨부파일이 모두 삭제됩니다." : noticeDeleteTarget ? "읽음 기록, 확인, 답변, 학생 연결, 첨부파일이 모두 삭제됩니다." : "학부모/학생 연결이 삭제되며, 남은 대상 학생이 없는 개별 공지도 함께 삭제됩니다."}</p>
             <label htmlFor="delete-confirm">확인을 위해 ‘삭제’를 입력하세요.</label>
             <input id="delete-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoFocus />
             {deleteFeedback && <p role="alert" className={deleteFeedback.type === "success" ? "success-message" : "form-error"}>{deleteFeedback.text}</p>}
-            <div className="modal-actions"><button type="button" className="secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>취소</button><button type="button" className="danger-button" onClick={noticeDeleteTarget ? deleteNotice : deleteStudent} disabled={deleteSubmitting || confirmText !== "삭제"}>{deleteSubmitting ? "삭제 중..." : noticeDeleteTarget ? "이 공지를 영구 삭제" : "이 학생을 영구 삭제"}</button></div>
+            <div className="modal-actions"><button type="button" className="secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>취소</button><button type="button" className="danger-button" onClick={noticeDeleteTarget ? deleteNotice : studentDeleteTarget ? deleteStudent : bulkDeleteNotices} disabled={deleteSubmitting || confirmText !== "삭제"}>{deleteSubmitting ? "삭제 중..." : bulkDeleteTargets ? `선택한 ${bulkDeleteTargets.length}개 공지 영구 삭제` : noticeDeleteTarget ? "이 공지를 영구 삭제" : "이 학생을 영구 삭제"}</button></div>
           </div>
         </div>
       )}
