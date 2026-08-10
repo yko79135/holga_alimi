@@ -1,12 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, roleLabel } from "@/lib/roles";
 
-export default function Header({ name, roles, activeView = "staff", currentPage = "dashboard", onViewChange }: { name: string; roles?: AppRole[]; role?: string; activeView?: DashboardView; currentPage?: "dashboard" | "account"; onViewChange?: (view: DashboardView) => void }) {
+export default function Header({ name, roles, activeView = "staff", currentPage = "dashboard", onViewChange, onLogoClick }: { name: string; roles?: AppRole[]; role?: string; activeView?: DashboardView; currentPage?: "dashboard" | "account"; onViewChange?: (view: DashboardView) => void; onLogoClick?: () => void }) {
   const router = useRouter();
   const safeRoles = roles?.length ? roles : ["parent"] as AppRole[];
   const canStaff = canUseStaffView(safeRoles);
@@ -28,9 +27,9 @@ export default function Header({ name, roles, activeView = "staff", currentPage 
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <Link href="/dashboard" className="topbar-logo-link" aria-label="메인 화면으로 이동">
+        <button type="button" className="topbar-logo-link" aria-label="메인 화면으로 이동" onClick={() => (onLogoClick ? onLogoClick() : router.push("/dashboard"))}>
           <Image className="topbar-logo" src="/branding/holy-guide-logo.png" alt="" width={44} height={42} priority />
-        </Link>
+        </button>
         <div><p className="eyebrow">{process.env.NEXT_PUBLIC_SCHOOL_NAME || "우리학교 학부모 포털"}</p><h1>{name}님, 안녕하세요.</h1><p className="muted">현재 {activeLabel}</p></div>
       </div>
       <div className="topbar-actions">
