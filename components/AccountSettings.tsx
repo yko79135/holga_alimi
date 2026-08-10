@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { AppRole } from "@/lib/roles";
 
 type PushState =
   | "idle"
@@ -75,13 +76,19 @@ async function getRegistration() {
   return registration;
 }
 
-export default function AccountSettings({ email }: { email: string }) {
+export default function AccountSettings({ email, roles }: { email: string; roles?: AppRole[] }) {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailCurrentPassword, setEmailCurrentPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailErr, setEmailErr] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
   const [pushState, setPushState] = useState<PushState>("idle");
   const [pushError, setPushError] = useState("");
   const [pushBusy, setPushBusy] = useState(false);
@@ -137,6 +144,33 @@ export default function AccountSettings({ email }: { email: string }) {
       setConfirm("");
       setMsg("비밀번호가 변경되었습니다.");
     }
+  }
+
+  async function changeEmail(e: FormEvent) {
+    e.preventDefault();
+    setEmailErr("");
+    setEmailMsg("");
+    const trimmedEmail = newEmail.trim();
+    if (!emailCurrentPassword || !trimmedEmail) return setEmailErr("현재 비밀번호와 새 이메일을 입력해주세요.");
+    if (trimmedEmail.toLowerCase() === email.trim().toLowerCase()) return setEmailErr("현재 이메일과 동일합니다.");
+    setEmailBusy(true);
+    const s = createClient();
+    const { error: signErr } = await s.auth.signInWithPassword({ email, password: emailCurrentPassword });
+    if (signErr) {
+      setEmailErr("현재 비밀번호가 올바르지 않습니다.");
+      setEmailBusy(false);
+      return;
+    }
+    const { data, error } = await s.auth.updateUser({ email: trimmedEmail });
+    setEmailBusy(false);
+    if (error) {
+      setEmailErr(error.message || "이메일 변경 요청에 실패했습니다.");
+      return;
+    }
+    setEmailCurrentPassword("");
+    setNewEmail("");
+    setPendingEmail(data.user?.new_email || trimmedEmail);
+    setEmailMsg("확인 메일을 발송했습니다. 새 이메일 주소로 전달된 링크를 눌러야 변경이 완료됩니다. (Supabase 프로젝트에서 이메일 변경 확인이 켜져 있어야 합니다.)");
   }
 
   async function enablePush() {
@@ -257,6 +291,22 @@ export default function AccountSettings({ email }: { email: string }) {
         {msg && <p role="status" className="success-message">{msg}</p>}
         {err && <p role="alert" className="form-error">{err}</p>}
       </section>
+      {roles?.includes("admin") && (
+        <section className="form-panel">
+          <p className="eyebrow">ACCOUNT</p>
+          <h2>로그인 이메일 변경</h2>
+          <p className="muted">현재 이메일: {email}{pendingEmail && ` · 확인 대기 중: ${pendingEmail}`}</p>
+          <form onSubmit={changeEmail}>
+            <label>현재 비밀번호</label>
+            <input type="password" autoComplete="current-password" value={emailCurrentPassword} onChange={(e) => setEmailCurrentPassword(e.target.value)} required />
+            <label>새 이메일</label>
+            <input type="email" autoComplete="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required />
+            <button className="primary" disabled={emailBusy}>{emailBusy ? "요청 중..." : "이메일 변경 요청"}</button>
+          </form>
+          {emailMsg && <p role="status" className="success-message">{emailMsg}</p>}
+          {emailErr && <p role="alert" className="form-error">{emailErr}</p>}
+        </section>
+      )}
       <section className="content-card">
         <p className="eyebrow">PUSH</p>
         <h2>앱 알림 설정</h2>
