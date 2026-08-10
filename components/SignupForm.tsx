@@ -5,8 +5,17 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const MAX_CHILDREN = 5;
+const CUSTOM_GRADE = "__custom__";
+
 type StudentCandidate = { id: string; name: string; grade: string; homeroom: string | null };
+type ChildDraft = { name: string; grade: string; gradeMode: "select" | "custom" };
+type ChildMatchResult = { name: string; grade: string; matches: StudentCandidate[] };
 type Step = "checking" | "invalid" | "form" | "confirm" | "submitting";
+
+function emptyChild(): ChildDraft {
+  return { name: "", grade: "", gradeMode: "select" };
+}
 
 export default function SignupForm() {
   const router = useRouter();
@@ -15,18 +24,19 @@ export default function SignupForm() {
 
   const [step, setStep] = useState<Step>("checking");
   const [invalidReason, setInvalidReason] = useState("");
+  const [grades, setGrades] = useState<string[]>([]);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [studentName, setStudentName] = useState("");
-  const [studentGrade, setStudentGrade] = useState("");
+  const [childCount, setChildCount] = useState(1);
+  const [children, setChildren] = useState<ChildDraft[]>([emptyChild()]);
 
   const [matching, setMatching] = useState(false);
-  const [matches, setMatches] = useState<StudentCandidate[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [results, setResults] = useState<ChildMatchResult[]>([]);
+  const [selections, setSelections] = useState<Record<number, string | "new" | null>>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -45,6 +55,7 @@ export default function SignupForm() {
           setInvalidReason(result.error || "초대 링크가 유효하지 않습니다.");
           setStep("invalid");
         } else {
+          setGrades(result.grades || []);
           setStep("form");
         }
       } catch {
@@ -59,24 +70,46 @@ export default function SignupForm() {
     };
   }, [token]);
 
+  function changeChildCount(next: number) {
+    setChildCount(next);
+    setChildren((current) => {
+      const copy = current.slice(0, next);
+      while (copy.length < next) copy.push(emptyChild());
+      return copy;
+    });
+  }
+
+  function updateChild(index: number, patch: Partial<ChildDraft>) {
+    setChildren((current) => current.map((child, i) => (i === index ? { ...child, ...patch } : child)));
+  }
+
   async function submitForm(event: FormEvent) {
     event.preventDefault();
     setError("");
     if (password.length < 8) return setError("비밀번호는 8자 이상이어야 합니다.");
     if (password !== confirm) return setError("비밀번호가 서로 일치하지 않습니다.");
-    if (!studentName.trim() || !studentGrade.trim()) return setError("학생 이름과 학년을 입력해주세요.");
+    for (const child of children) {
+      if (!child.name.trim() || !child.grade.trim()) return setError("모든 자녀의 이름과 학년을 입력해주세요.");
+    }
 
     setMatching(true);
     try {
       const response = await fetch("/api/signup/invite/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, studentName: studentName.trim(), studentGrade: studentGrade.trim() }),
+        body: JSON.stringify({ token, children: children.map((child) => ({ name: child.name.trim(), grade: child.grade.trim() })) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "학생 정보를 확인하지 못했습니다.");
-      setMatches(result.matches || []);
-      setSelectedStudentId(result.matches?.length === 1 ? result.matches[0].id : null);
+      const childResults: ChildMatchResult[] = result.results || [];
+      setResults(childResults);
+      const initial: Record<number, string | "new" | null> = {};
+      childResults.forEach((childResult, index) => {
+        if (childResult.matches.length === 1) initial[index] = childResult.matches[0].id;
+        else if (childResult.matches.length === 0) initial[index] = "new";
+        else initial[index] = null;
+      });
+      setSelections(initial);
       setStep("confirm");
     } catch (err) {
       setError(err instanceof Error ? err.message : "학생 정보를 확인하지 못했습니다.");
@@ -85,9 +118,11 @@ export default function SignupForm() {
     }
   }
 
-  async function finalize(useNewStudent: boolean) {
+  const canFinalize = results.every((_, index) => selections[index] !== null && selections[index] !== undefined);
+
+  async function finalize() {
     setError("");
-    if (!useNewStudent && !selectedStudentId) return setError("연결할 학생을 선택해주세요.");
+    if (!canFinalize) return setError("모든 자녀의 연결 여부를 선택해주세요.");
     setStep("submitting");
     try {
       const response = await fetch("/api/signup/invite", {
@@ -99,9 +134,11 @@ export default function SignupForm() {
           password,
           fullName,
           phone,
-          studentName: studentName.trim(),
-          studentGrade: studentGrade.trim(),
-          selectedStudentId: useNewStudent ? null : selectedStudentId,
+          children: results.map((childResult, index) => ({
+            name: childResult.name,
+            grade: childResult.grade,
+            selectedStudentId: selections[index] === "new" ? null : selections[index],
+          })),
         }),
       });
       const result = await response.json();
@@ -161,36 +198,44 @@ export default function SignupForm() {
       <div className="login-card">
         {logo}
         <p className="eyebrow">PARENT SIGNUP</p>
-        <h1>학생 확인</h1>
-        {matches.length === 0 && (
-          <>
-            <p className="muted">일치하는 학생을 찾지 못했습니다. 아래 정보로 새 학생을 등록합니다.</p>
-            <dl className="reset-target-details">
-              <div><dt>이름</dt><dd>{studentName}</dd></div>
-              <div><dt>학년</dt><dd>{studentGrade}</dd></div>
-            </dl>
-          </>
-        )}
-        {matches.length > 0 && (
-          <>
-            <p className="muted">{matches.length === 1 ? "다음 학생과 연결됩니다. 맞습니까?" : "이름과 학년이 일치하는 학생이 여러 명입니다. 자녀를 선택해주세요."}</p>
-            <div className="check-grid">
-              {matches.map((student) => (
-                <label className="check-card" key={student.id}>
-                  <input type="radio" name="student-match" checked={selectedStudentId === student.id} onChange={() => setSelectedStudentId(student.id)} />
-                  <span><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></span>
-                </label>
-              ))}
+        <h1>자녀 확인</h1>
+        <p className="muted">자녀별로 연결할 학생을 확인해주세요.</p>
+        <div className="warning-reason-list">
+          {results.map((childResult, index) => (
+            <div className="warning-reason-card" key={index}>
+              <strong>자녀 {index + 1}: {childResult.name} · {childResult.grade}</strong>
+              {childResult.matches.length === 0 && <p className="muted">일치하는 학생이 없어 신입생으로 등록됩니다.</p>}
+              {childResult.matches.length > 0 && (
+                <div className="check-grid">
+                  {childResult.matches.map((student) => (
+                    <label className="check-card" key={student.id}>
+                      <input
+                        type="radio"
+                        name={`child-${index}-match`}
+                        checked={selections[index] === student.id}
+                        onChange={() => setSelections((current) => ({ ...current, [index]: student.id }))}
+                      />
+                      <span><b>{student.name}</b><small>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</small></span>
+                    </label>
+                  ))}
+                  <label className="check-card">
+                    <input
+                      type="radio"
+                      name={`child-${index}-match`}
+                      checked={selections[index] === "new"}
+                      onChange={() => setSelections((current) => ({ ...current, [index]: "new" }))}
+                    />
+                    <span><b>목록에 없음</b><small>신입생으로 등록</small></span>
+                  </label>
+                </div>
+              )}
             </div>
-          </>
-        )}
+          ))}
+        </div>
         {error && <p className="form-error">{error}</p>}
         <div className="topbar-actions">
           <button type="button" className="secondary" onClick={() => { setStep("form"); setError(""); }} disabled={step === "submitting"}>다시 입력</button>
-          {matches.length > 0 && (
-            <button type="button" className="secondary" onClick={() => finalize(true)} disabled={step === "submitting"}>{studentName} 학생이 아니에요, 신입생으로 등록</button>
-          )}
-          <button type="button" className="primary" onClick={() => finalize(matches.length === 0)} disabled={step === "submitting" || (matches.length > 0 && !selectedStudentId)}>
+          <button type="button" className="primary" onClick={finalize} disabled={step === "submitting" || !canFinalize}>
             {step === "submitting" ? "처리 중..." : "확인하고 계정 만들기"}
           </button>
         </div>
@@ -219,11 +264,43 @@ export default function SignupForm() {
       <label>비밀번호 확인</label>
       <input type="password" autoComplete="new-password" minLength={8} value={confirm} onChange={(event) => setConfirm(event.target.value)} required />
 
-      <label>자녀 이름</label>
-      <input value={studentName} onChange={(event) => setStudentName(event.target.value)} required />
+      <label>자녀 수</label>
+      <select value={childCount} onChange={(event) => changeChildCount(Number(event.target.value))}>
+        {Array.from({ length: MAX_CHILDREN }, (_, i) => i + 1).map((count) => (
+          <option key={count} value={count}>{count}명</option>
+        ))}
+      </select>
 
-      <label>자녀 학년</label>
-      <input value={studentGrade} onChange={(event) => setStudentGrade(event.target.value)} placeholder="G7E" required />
+      {children.map((child, index) => (
+        <div className="two-columns" key={index}>
+          <div>
+            <label>자녀 {index + 1} 이름</label>
+            <input value={child.name} onChange={(event) => updateChild(index, { name: event.target.value })} required />
+          </div>
+          <div>
+            <label>자녀 {index + 1} 학년</label>
+            {child.gradeMode === "select" ? (
+              <select
+                value={grades.includes(child.grade) ? child.grade : ""}
+                onChange={(event) => {
+                  if (event.target.value === CUSTOM_GRADE) updateChild(index, { gradeMode: "custom", grade: "" });
+                  else updateChild(index, { grade: event.target.value });
+                }}
+                required
+              >
+                <option value="">학년 선택</option>
+                {grades.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                <option value={CUSTOM_GRADE}>직접 입력 (새 학년)</option>
+              </select>
+            ) : (
+              <div className="attachment-item">
+                <input value={child.grade} onChange={(event) => updateChild(index, { grade: event.target.value })} placeholder="G7E" required />
+                <button type="button" className="secondary" onClick={() => updateChild(index, { gradeMode: "select", grade: "" })}>목록에서 선택</button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
 
       {error && <p className="form-error">{error}</p>}
       <button className="primary wide" disabled={matching}>{matching ? "확인 중..." : "다음"}</button>

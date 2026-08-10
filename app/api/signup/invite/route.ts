@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { findMatchingStudents, invalidInviteReason } from "@/lib/invites";
+import { invalidInviteReason, MAX_CHILDREN_PER_SIGNUP } from "@/lib/invites";
 
 export const runtime = "nodejs";
 
@@ -27,8 +27,16 @@ export async function GET(request: Request) {
   const reason = invalidInviteReason(invite);
   if (reason) return NextResponse.json({ valid: false, error: reason });
 
-  return NextResponse.json({ valid: true });
+  // students.grade has no fixed enum -- it's free text -- so this is just "whatever grades
+  // currently exist," not an authoritative list. The signup form falls back to free-text entry
+  // for a grade that isn't in this list yet (e.g. a brand-new incoming class with no students).
+  const { data: gradeRows } = await admin.from("students").select("grade").eq("active", true);
+  const grades = Array.from(new Set((gradeRows || []).map((row: any) => row.grade))).sort();
+
+  return NextResponse.json({ valid: true, grades });
 }
+
+type ChildInput = { name: string; grade: string; selectedStudentId?: string | null };
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -37,38 +45,21 @@ export async function POST(request: Request) {
   const password = String(body.password || "");
   const fullName = String(body.fullName || "").trim();
   const phone = String(body.phone || "").trim();
-  const studentName = String(body.studentName || "").trim();
-  const studentGrade = String(body.studentGrade || "").trim();
-  const selectedStudentId = body.selectedStudentId ? String(body.selectedStudentId).trim() : null;
+  const children: ChildInput[] = Array.isArray(body.children) ? body.children : [];
 
   if (!isValidEmail(email)) return NextResponse.json({ error: "이메일 형식을 확인해주세요." }, { status: 400 });
   if (!fullName) return NextResponse.json({ error: "이름을 입력해주세요." }, { status: 400 });
   if (password.length < 8) return NextResponse.json({ error: "비밀번호는 8자 이상이어야 합니다." }, { status: 400 });
-  if (!studentName || !studentGrade) return NextResponse.json({ error: "학생 이름과 학년을 입력해주세요." }, { status: 400 });
+  if (!children.length || children.length > MAX_CHILDREN_PER_SIGNUP) return NextResponse.json({ error: "자녀 정보를 확인해주세요." }, { status: 400 });
+  for (const child of children) {
+    if (!String(child?.name || "").trim() || !String(child?.grade || "").trim()) return NextResponse.json({ error: "자녀 이름과 학년을 모두 입력해주세요." }, { status: 400 });
+  }
 
   const admin = createAdminClient();
   const invite = await loadInvite(admin, token);
   if (!invite) return NextResponse.json({ error: "초대 링크가 유효하지 않습니다." }, { status: 400 });
   const reason = invalidInviteReason(invite);
   if (reason) return NextResponse.json({ error: reason }, { status: 400 });
-
-  // Re-resolve the match server-side rather than trusting the client's selection outright: this
-  // catches both tampering (an id that doesn't actually correspond to the submitted name/grade)
-  // and races (a matching student got created by someone else between the match-check call and
-  // this submit). Either way we never silently create a duplicate student.
-  const matches = await findMatchingStudents(studentName, studentGrade);
-  let studentId: string;
-  if (selectedStudentId) {
-    const confirmed = matches.find((student) => student.id === selectedStudentId);
-    if (!confirmed) return NextResponse.json({ error: "선택한 학생 정보가 변경되었습니다. 다시 확인해주세요.", code: "STUDENT_MATCH_STALE" }, { status: 409 });
-    studentId = confirmed.id;
-  } else if (matches.length > 0) {
-    return NextResponse.json({ error: "이미 등록된 같은 이름의 학생이 있습니다. 다시 확인해주세요.", code: "STUDENT_MATCH_FOUND" }, { status: 409 });
-  } else {
-    const { data: newStudent, error: studentError } = await admin.from("students").insert({ name: studentName, grade: studentGrade }).select("id").single();
-    if (studentError || !newStudent) return NextResponse.json({ error: "학생 등록에 실패했습니다. 다시 시도해주세요." }, { status: 500 });
-    studentId = newStudent.id;
-  }
 
   let newUserId: string | null = null;
   try {
@@ -87,13 +78,18 @@ export async function POST(request: Request) {
       if (profileError) throw new Error("PROFILE_UPDATE_FAILED");
     }
 
-    const { error: linkError } = await admin.from("parent_students").insert({ parent_id: newUserId, student_id: studentId });
-    if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
+    // One atomic transaction for every child: resolves each (existing match or new student),
+    // links the parent, and logs the redemption. Any single child failing re-validation rolls
+    // the whole batch back -- never a partial set of linked children.
+    const payload = children.map((child) => ({
+      name: String(child.name).trim(),
+      grade: String(child.grade).trim(),
+      selectedStudentId: child.selectedStudentId ? String(child.selectedStudentId).trim() : null,
+    }));
+    const { data: rpcResult, error: rpcError } = await admin.rpc("redeem_signup_invite_children", { p_invite_id: invite.id, p_parent_id: newUserId, p_children: payload });
+    if (rpcError) throw new Error(rpcError.message);
 
-    const { error: redemptionError } = await admin.from("signup_invite_redemptions").insert({ invite_id: invite.id, parent_id: newUserId, student_id: studentId });
-    if (redemptionError) throw new Error("INVITE_FINALIZE_FAILED");
-
-    return NextResponse.json({ message: "계정이 생성되었습니다.", email });
+    return NextResponse.json({ message: "계정이 생성되었습니다.", email, children: rpcResult });
   } catch (error) {
     if (newUserId) {
       try {
@@ -102,9 +98,15 @@ export async function POST(request: Request) {
         console.error("signup-invite-cleanup-failed", { inviteId: invite.id, newUserId, message: cleanupError instanceof Error ? cleanupError.message : "unknown" });
       }
     }
-    const message = error instanceof Error ? error.message : "";
-    if (message === "DUPLICATE_EMAIL") return NextResponse.json({ error: "이미 사용 중인 이메일입니다. 다른 이메일을 입력해주세요." }, { status: 409 });
-    console.error("signup-invite-redeem-failed", { inviteId: invite.id, message });
+    const raw = error instanceof Error ? error.message : "";
+    if (raw === "DUPLICATE_EMAIL") return NextResponse.json({ error: "이미 사용 중인 이메일입니다. 다른 이메일을 입력해주세요." }, { status: 409 });
+    if (raw.startsWith("STUDENT_MATCH_FOUND")) {
+      return NextResponse.json({ error: `이미 등록된 같은 이름의 학생이 있습니다 (${raw.split(":")[1]?.trim() || ""}). 다시 확인해주세요.`, code: "STUDENT_MATCH_FOUND" }, { status: 409 });
+    }
+    if (raw.startsWith("STUDENT_MATCH_STALE")) {
+      return NextResponse.json({ error: `선택한 학생 정보가 변경되었습니다 (${raw.split(":")[1]?.trim() || ""}). 다시 확인해주세요.`, code: "STUDENT_MATCH_STALE" }, { status: 409 });
+    }
+    console.error("signup-invite-redeem-failed", { inviteId: invite.id, message: raw });
     return NextResponse.json({ error: "계정 생성 중 오류가 발생했습니다. 다시 시도해주세요." }, { status: 500 });
   }
 }
