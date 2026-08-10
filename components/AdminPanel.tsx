@@ -22,22 +22,22 @@ type AccountSummary = {
   linkedStudents?: Student[];
 };
 type CreatedAccount = AccountSummary;
-type InviteStatus = "pending" | "used" | "expired" | "revoked";
+type InviteStatus = "active" | "expired" | "revoked";
+type InviteRedemption = { name: string; grade: string; createdAt: string };
 type InviteSummary = {
   id: string;
   token: string;
-  linkedStudents: Student[];
   expiresAt: string;
-  usedAt: string | null;
   revokedAt: string | null;
   createdAt: string;
   status: InviteStatus;
+  redemptions: InviteRedemption[];
 };
 
 const roleLabels: Record<Role, string> = { admin: "관리자", teacher: "교사", parent: "학부모" };
 const statusLabels: Record<Status, string> = { active: "정상", missing_profile: "프로필 없음", missing_role: "권한 확인 필요", unconfirmed_email: "이메일 미확인", inconsistent: "정보 불일치" };
 const repairableStatuses: Status[] = ["missing_profile", "missing_role", "inconsistent"];
-const inviteStatusLabels: Record<InviteStatus, string> = { pending: "대기 중", used: "사용됨", expired: "만료됨", revoked: "취소됨" };
+const inviteStatusLabels: Record<InviteStatus, string> = { active: "사용 가능", expired: "만료됨", revoked: "취소됨" };
 
 async function parseApiResponse(response: Response) {
   const text = await response.text();
@@ -75,7 +75,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
   const [invites, setInvites] = useState<InviteSummary[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
-  const [inviteExpiryDays, setInviteExpiryDays] = useState(7);
+  const [inviteExpiryDays, setInviteExpiryDays] = useState(30);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<Feedback | null>(null);
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
@@ -388,7 +388,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
           </div>
           <button type="button" className="secondary" onClick={loadInvites} disabled={invitesLoading}>{invitesLoading ? "확인 중..." : "새로고침"}</button>
         </div>
-        <p className="muted">링크를 생성해 학부모에게 전달하면, 학부모가 직접 이메일·비밀번호와 자녀의 이름·학년을 입력해 계정을 만듭니다. 입력한 이름·학년과 일치하는 학생이 있으면 그 학생과 연결되고, 없으면 새 학생으로 등록됩니다. 링크는 1회만 사용할 수 있습니다.</p>
+        <p className="muted">링크를 생성해 학부모에게 전달하면, 학부모가 직접 이메일·비밀번호와 자녀의 이름·학년을 입력해 계정을 만듭니다. 입력한 이름·학년과 일치하는 학생이 있으면 그 학생과 연결되고, 없으면 새 학생으로 등록됩니다. 링크는 만료되거나 취소되기 전까지 여러 학부모가 반복해서 사용할 수 있습니다.</p>
         <div className="two-columns">
           <div>
             <label>유효기간</label>
@@ -410,23 +410,28 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         {inviteFeedback && <p role={inviteFeedback.type === "success" ? "status" : "alert"} className={inviteFeedback.type === "success" ? "success-message" : "form-error"}>{inviteFeedback.text}</p>}
 
         <div className="account-list">
-          {invites.map((invite) => (
+          {invites.map((invite) => {
+            const shown = invite.redemptions.slice(0, 5);
+            const remaining = invite.redemptions.length - shown.length;
+            return (
             <article className="account-card" key={invite.id}>
               <div>
-                <strong>{invite.linkedStudents.length ? invite.linkedStudents.map((student) => `${student.name} (${student.grade})`).join(", ") : "대상 미지정 (학부모가 직접 입력)"}</strong>
+                <strong>{invite.redemptions.length ? `연결된 학생 ${invite.redemptions.length}명` : "아직 사용되지 않음"}</strong>
+                {shown.length > 0 && <small>{shown.map((student) => `${student.name} (${student.grade})`).join(", ")}{remaining > 0 ? ` 외 ${remaining}명` : ""}</small>}
                 <small>{new Date(invite.createdAt).toLocaleString("ko-KR")} 생성 · {new Date(invite.expiresAt).toLocaleString("ko-KR")} 만료</small>
               </div>
               <div className="account-meta">
                 <span className="pill">{inviteStatusLabels[invite.status]}</span>
               </div>
-              {invite.status === "pending" && (
+              {invite.status === "active" && (
                 <div className="account-actions">
                   <button type="button" className="secondary" onClick={() => copyToClipboard(inviteUrl(invite.token))}>링크 복사</button>
                   <button type="button" className="danger-button" onClick={() => revokeInvite(invite.id)}>취소</button>
                 </div>
               )}
             </article>
-          ))}
+            );
+          })}
           {!invites.length && <div className="empty-state">생성된 초대 링크가 없습니다.</div>}
         </div>
       </section>

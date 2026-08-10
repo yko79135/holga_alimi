@@ -14,7 +14,7 @@ function isValidEmail(email: string) {
 
 async function loadInvite(admin: ReturnType<typeof createAdminClient>, token: string) {
   if (!token) return null;
-  const { data } = await admin.from("signup_invites").select("id,used_at,revoked_at,expires_at").eq("token", token).maybeSingle();
+  const { data } = await admin.from("signup_invites").select("id,revoked_at,expires_at").eq("token", token).maybeSingle();
   return data;
 }
 
@@ -70,12 +70,6 @@ export async function POST(request: Request) {
     studentId = newStudent.id;
   }
 
-  // Claim the token before creating anything: this is the single-use guard, and it closes the
-  // race where two requests redeem the same link concurrently. If account creation fails below,
-  // the catch block un-claims it so the same link can be retried.
-  const claimRes = await admin.from("signup_invites").update({ used_at: new Date().toISOString() }).eq("id", invite.id).is("used_at", null).is("revoked_at", null).select("id").single();
-  if (claimRes.error || !claimRes.data) return NextResponse.json({ error: "이미 처리된 초대 링크입니다." }, { status: 409 });
-
   let newUserId: string | null = null;
   try {
     const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName, role: "parent" } });
@@ -96,12 +90,11 @@ export async function POST(request: Request) {
     const { error: linkError } = await admin.from("parent_students").insert({ parent_id: newUserId, student_id: studentId });
     if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
 
-    const { error: usedByError } = await admin.from("signup_invites").update({ used_by: newUserId, student_ids: [studentId] }).eq("id", invite.id);
-    if (usedByError) throw new Error("INVITE_FINALIZE_FAILED");
+    const { error: redemptionError } = await admin.from("signup_invite_redemptions").insert({ invite_id: invite.id, parent_id: newUserId, student_id: studentId });
+    if (redemptionError) throw new Error("INVITE_FINALIZE_FAILED");
 
     return NextResponse.json({ message: "계정이 생성되었습니다.", email });
   } catch (error) {
-    await admin.from("signup_invites").update({ used_at: null }).eq("id", invite.id);
     if (newUserId) {
       try {
         await admin.auth.admin.deleteUser(newUserId);
