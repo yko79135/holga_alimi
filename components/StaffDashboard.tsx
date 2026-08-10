@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
 import WarningManager from "@/components/warnings/WarningManager";
+import AttendanceManager from "@/components/attendance/AttendanceManager";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
@@ -22,7 +23,7 @@ type Attachment = { id: string; original_filename: string; size_bytes: number };
 type Feedback = { type: "success" | "error"; text: string };
 type StudentPreview = { name: string; grade: string; parentLinkCount: number; individualNoticeCount: number };
 
-const typeLabels: Record<string, string> = { newsletter:"가정통신문", warning:"학생 경고", guidance:"생활지도", consultation:"상담 안내", urgent:"긴급 공지" };
+const typeLabels: Record<string, string> = { newsletter:"가정통신문", warning:"학생 경고", guidance:"생활지도", consultation:"상담 안내", urgent:"긴급 공지", attendance:"출결 안내" };
 
 export default function StaffDashboard({ userId, role }: { userId: string; role: string }) {
   const [tab, setTab] = useState("compose");
@@ -308,6 +309,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
         <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>발송 기록</button>
         <button className={tab === "students" ? "active" : ""} onClick={() => setTab("students")}>학생 관리</button>
         <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>경고 관리</button>
+        <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 관리</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}>계정 관리</button>}
       </nav>
 
@@ -363,6 +365,8 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       )}
 
       {tab === "warnings" && <WarningManager role={role} />}
+
+      {tab === "attendance" && <AttendanceManager role={role} />}
 
       {tab === "students" && (
         <section className="student-management-layout">

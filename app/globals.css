@@ -424,6 +424,11 @@ h3 {
   background: var(--sand-100);
   color: var(--teal-700);
 }
+.notice-icon.attendance,
+.tag.attendance {
+  background: var(--blue-100);
+  color: var(--teal-700);
+}
 .notice-main {
   display: grid;
   gap: 4px;
@@ -1039,6 +1044,28 @@ h3 {
 .warning-grid input.unsaved {
   border-color: var(--warning);
   background: #fff7eb;
+  box-shadow: 0 0 0 2px rgba(193, 122, 61, 0.16);
+}
+.attendance-grid select {
+  width: 64px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: center;
+  background: #fbfefd;
+  font-size: 12px;
+}
+.attendance-grid select:focus {
+  outline: 3px solid rgba(136, 200, 192, 0.35);
+  border-color: var(--teal-700);
+}
+.attendance-grid select.attendance-exception {
+  border-color: var(--warning);
+  background: #fff7eb;
+}
+.attendance-grid select.unsaved {
+  border-color: var(--danger);
+  background: var(--danger-soft);
   box-shadow: 0 0 0 2px rgba(193, 122, 61, 0.16);
 }
 @media (max-width: 700px) {
