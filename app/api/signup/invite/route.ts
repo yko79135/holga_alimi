@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { invalidInviteReason } from "@/lib/invites";
+import { findMatchingStudents, invalidInviteReason } from "@/lib/invites";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ function isValidEmail(email: string) {
 
 async function loadInvite(admin: ReturnType<typeof createAdminClient>, token: string) {
   if (!token) return null;
-  const { data } = await admin.from("signup_invites").select("id,student_ids,expires_at,used_at,revoked_at").eq("token", token).maybeSingle();
+  const { data } = await admin.from("signup_invites").select("id,used_at,revoked_at,expires_at").eq("token", token).maybeSingle();
   return data;
 }
 
@@ -27,8 +27,7 @@ export async function GET(request: Request) {
   const reason = invalidInviteReason(invite);
   if (reason) return NextResponse.json({ valid: false, error: reason });
 
-  const { data: students } = invite.student_ids.length ? await admin.from("students").select("id,name,grade").in("id", invite.student_ids) : { data: [] };
-  return NextResponse.json({ valid: true, students: students || [] });
+  return NextResponse.json({ valid: true });
 }
 
 export async function POST(request: Request) {
@@ -38,16 +37,38 @@ export async function POST(request: Request) {
   const password = String(body.password || "");
   const fullName = String(body.fullName || "").trim();
   const phone = String(body.phone || "").trim();
+  const studentName = String(body.studentName || "").trim();
+  const studentGrade = String(body.studentGrade || "").trim();
+  const selectedStudentId = body.selectedStudentId ? String(body.selectedStudentId).trim() : null;
 
   if (!isValidEmail(email)) return NextResponse.json({ error: "이메일 형식을 확인해주세요." }, { status: 400 });
   if (!fullName) return NextResponse.json({ error: "이름을 입력해주세요." }, { status: 400 });
   if (password.length < 8) return NextResponse.json({ error: "비밀번호는 8자 이상이어야 합니다." }, { status: 400 });
+  if (!studentName || !studentGrade) return NextResponse.json({ error: "학생 이름과 학년을 입력해주세요." }, { status: 400 });
 
   const admin = createAdminClient();
   const invite = await loadInvite(admin, token);
   if (!invite) return NextResponse.json({ error: "초대 링크가 유효하지 않습니다." }, { status: 400 });
   const reason = invalidInviteReason(invite);
   if (reason) return NextResponse.json({ error: reason }, { status: 400 });
+
+  // Re-resolve the match server-side rather than trusting the client's selection outright: this
+  // catches both tampering (an id that doesn't actually correspond to the submitted name/grade)
+  // and races (a matching student got created by someone else between the match-check call and
+  // this submit). Either way we never silently create a duplicate student.
+  const matches = await findMatchingStudents(studentName, studentGrade);
+  let studentId: string;
+  if (selectedStudentId) {
+    const confirmed = matches.find((student) => student.id === selectedStudentId);
+    if (!confirmed) return NextResponse.json({ error: "선택한 학생 정보가 변경되었습니다. 다시 확인해주세요.", code: "STUDENT_MATCH_STALE" }, { status: 409 });
+    studentId = confirmed.id;
+  } else if (matches.length > 0) {
+    return NextResponse.json({ error: "이미 등록된 같은 이름의 학생이 있습니다. 다시 확인해주세요.", code: "STUDENT_MATCH_FOUND" }, { status: 409 });
+  } else {
+    const { data: newStudent, error: studentError } = await admin.from("students").insert({ name: studentName, grade: studentGrade }).select("id").single();
+    if (studentError || !newStudent) return NextResponse.json({ error: "학생 등록에 실패했습니다. 다시 시도해주세요." }, { status: 500 });
+    studentId = newStudent.id;
+  }
 
   // Claim the token before creating anything: this is the single-use guard, and it closes the
   // race where two requests redeem the same link concurrently. If account creation fails below,
@@ -72,13 +93,10 @@ export async function POST(request: Request) {
       if (profileError) throw new Error("PROFILE_UPDATE_FAILED");
     }
 
-    if (invite.student_ids.length) {
-      const rows = invite.student_ids.map((studentId: string) => ({ parent_id: newUserId, student_id: studentId }));
-      const { error: linkError } = await admin.from("parent_students").insert(rows);
-      if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
-    }
+    const { error: linkError } = await admin.from("parent_students").insert({ parent_id: newUserId, student_id: studentId });
+    if (linkError && linkError.code !== "23505") throw new Error("PARENT_LINK_FAILED");
 
-    const { error: usedByError } = await admin.from("signup_invites").update({ used_by: newUserId }).eq("id", invite.id);
+    const { error: usedByError } = await admin.from("signup_invites").update({ used_by: newUserId, student_ids: [studentId] }).eq("id", invite.id);
     if (usedByError) throw new Error("INVITE_FINALIZE_FAILED");
 
     return NextResponse.json({ message: "계정이 생성되었습니다.", email });

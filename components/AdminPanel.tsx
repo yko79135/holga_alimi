@@ -26,7 +26,7 @@ type InviteStatus = "pending" | "used" | "expired" | "revoked";
 type InviteSummary = {
   id: string;
   token: string;
-  students: Student[];
+  linkedStudents: Student[];
   expiresAt: string;
   usedAt: string | null;
   revokedAt: string | null;
@@ -75,7 +75,6 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
   const [invites, setInvites] = useState<InviteSummary[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
-  const [inviteStudentIds, setInviteStudentIds] = useState<string[]>([]);
   const [inviteExpiryDays, setInviteExpiryDays] = useState(7);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<Feedback | null>(null);
@@ -116,10 +115,6 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     void loadInvites();
   }, [loadAccounts, loadInvites]);
 
-  function toggleInviteStudent(id: string) {
-    setInviteStudentIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
-  }
-
   function inviteUrl(token: string) {
     return `${window.location.origin}/signup?token=${token}`;
   }
@@ -134,7 +129,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   }
 
   async function generateInvite() {
-    if (!inviteStudentIds.length || inviteSubmitting) return;
+    if (inviteSubmitting) return;
     setInviteSubmitting(true);
     setInviteFeedback(null);
     setGeneratedInviteUrl("");
@@ -142,12 +137,11 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       const response = await fetch("/api/admin/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentIds: inviteStudentIds, expiresInDays: inviteExpiryDays }),
+        body: JSON.stringify({ expiresInDays: inviteExpiryDays }),
       });
       const result = await parseApiResponse(response) as { error?: string; invite?: { token: string } };
       if (!response.ok || !result.invite) throw new Error(result.error || "초대 링크 생성에 실패했습니다.");
       setGeneratedInviteUrl(inviteUrl(result.invite.token));
-      setInviteStudentIds([]);
       setInviteFeedback({ type: "success", text: "초대 링크를 생성했습니다. 학부모에게 링크를 전달해주세요." });
       void loadInvites();
     } catch (error) {
@@ -394,19 +388,8 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
           </div>
           <button type="button" className="secondary" onClick={loadInvites} disabled={invitesLoading}>{invitesLoading ? "확인 중..." : "새로고침"}</button>
         </div>
-        <p className="muted">학생을 선택해 링크를 생성하면, 학부모가 직접 이메일과 비밀번호를 입력해 계정을 만들고 선택한 학생과 자동으로 연결됩니다. 링크는 1회만 사용할 수 있습니다.</p>
+        <p className="muted">링크를 생성해 학부모에게 전달하면, 학부모가 직접 이메일·비밀번호와 자녀의 이름·학년을 입력해 계정을 만듭니다. 입력한 이름·학년과 일치하는 학생이 있으면 그 학생과 연결되고, 없으면 새 학생으로 등록됩니다. 링크는 1회만 사용할 수 있습니다.</p>
         <div className="two-columns">
-          <div>
-            <label>연결할 학생</label>
-            <div className="check-grid">
-              {students.map((student) => (
-                <label className="check-card" key={student.id}>
-                  <input type="checkbox" checked={inviteStudentIds.includes(student.id)} onChange={() => toggleInviteStudent(student.id)} />
-                  <span><b>{student.name}</b><small>{student.grade}</small></span>
-                </label>
-              ))}
-            </div>
-          </div>
           <div>
             <label>유효기간</label>
             <select value={inviteExpiryDays} onChange={(e) => setInviteExpiryDays(Number(e.target.value))}>
@@ -417,7 +400,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             </select>
           </div>
         </div>
-        <button type="button" className="primary" onClick={generateInvite} disabled={inviteSubmitting || !inviteStudentIds.length}>{inviteSubmitting ? "생성 중..." : "초대 링크 생성"}</button>
+        <button type="button" className="primary" onClick={generateInvite} disabled={inviteSubmitting}>{inviteSubmitting ? "생성 중..." : "초대 링크 생성"}</button>
         {generatedInviteUrl && (
           <div className="attachment-item">
             <span>{generatedInviteUrl}</span>
@@ -430,7 +413,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
           {invites.map((invite) => (
             <article className="account-card" key={invite.id}>
               <div>
-                <strong>{invite.students.map((student) => `${student.name} (${student.grade})`).join(", ") || "대상 없음"}</strong>
+                <strong>{invite.linkedStudents.length ? invite.linkedStudents.map((student) => `${student.name} (${student.grade})`).join(", ") : "대상 미지정 (학부모가 직접 입력)"}</strong>
                 <small>{new Date(invite.createdAt).toLocaleString("ko-KR")} 생성 · {new Date(invite.expiresAt).toLocaleString("ko-KR")} 만료</small>
               </div>
               <div className="account-meta">

@@ -26,8 +26,7 @@ type StudentPreview = { name: string; grade: string; parentLinkCount: number; in
 
 const typeLabels: Record<string, string> = { newsletter:"가정통신문", warning:"학생 경고", guidance:"생활지도", consultation:"상담 안내", urgent:"긴급 공지", attendance:"출결 안내" };
 
-export default function StaffDashboard({ userId, role }: { userId: string; role: string }) {
-  const [tab, setTab] = useState("compose");
+export default function StaffDashboard({ userId, role, tab, onTabChange }: { userId: string; role: string; tab: string; onTabChange: (tab: string) => void }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -182,7 +181,7 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
       setFiles([]);
       setMessage(`${result.message} 앱 알림 ${result.push?.sent || 0}건 전송 · 알림 미등록 사용자 ${result.push?.unsubscribed || 0}명 · 실패 ${result.push?.failed || 0}건`);
       await load();
-      setTab("notices");
+      onTabChange("notices");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "알림 발송에 실패했습니다.");
     } finally {
@@ -331,13 +330,13 @@ export default function StaffDashboard({ userId, role }: { userId: string; role:
   return (
     <div className="staff-wrap">
       <nav className="staff-tabs">
-        <button className={tab === "compose" ? "active" : ""} onClick={() => setTab("compose")}>알림 작성</button>
-        <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>발송 기록</button>
-        <button className={tab === "students" ? "active" : ""} onClick={() => setTab("students")}>학생 관리</button>
-        <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>경고 관리</button>
-        <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 관리</button>
-        <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
-        {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}>계정 관리</button>}
+        <button className={tab === "compose" ? "active" : ""} onClick={() => onTabChange("compose")}>알림 작성</button>
+        <button className={tab === "notices" ? "active" : ""} onClick={() => onTabChange("notices")}>발송 기록</button>
+        <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>
+        <button className={tab === "warnings" ? "active" : ""} onClick={() => onTabChange("warnings")}>경고 관리</button>
+        <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
+        <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
+        {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
       </nav>
 
       <div className="stats-row">
