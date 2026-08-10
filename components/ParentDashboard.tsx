@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/types";
 
 type Student = {
   id: string;
@@ -42,6 +43,7 @@ const typeLabels: Record<string, string> = {
   guidance: "생활지도",
   consultation: "상담 안내",
   urgent: "긴급 공지",
+  attendance: "출결 안내",
 };
 
 export default function ParentDashboard({ userId }: { userId: string }) {
@@ -56,6 +58,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [warningRows, setWarningRows] = useState<any[]>([]);
+  const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -76,6 +79,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
       const nextNotices = (result.notices || []) as Notice[];
       setStudents((result.students || []) as Student[]);
       setWarningRows(result.warnings || []);
+      setAttendanceRows(result.attendance || []);
       setNotices(nextNotices);
       setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
     } catch (error) {
@@ -317,6 +321,36 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                 ))
               ) : (
                 <p className="muted">표시할 경고 내역이 없습니다.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="content-card parent-warning-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">ATTENDANCE STATUS</p>
+                <h2>출석 현황</h2>
+              </div>
+            </div>
+            <div className="sent-list">
+              {attendanceRows.length ? (
+                attendanceRows.map((a: any) => (
+                  <article
+                    className="sent-card"
+                    key={a.id || `${a.student_id}-${a.created_at}`}
+                  >
+                    <span className="tag attendance">
+                      {ATTENDANCE_STATUS_LABELS[a.new_status as keyof typeof ATTENDANCE_STATUS_LABELS] || a.new_status}
+                    </span>
+                    <h3>{a.attendance_date}</h3>
+                    <p>{new Date(a.created_at).toLocaleString("ko-KR")}</p>
+                    {a.parent_visible_reason && (
+                      <p className="sent-preview">{a.parent_visible_reason}</p>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <p className="muted">표시할 출석 내역이 없습니다.</p>
               )}
             </div>
           </section>

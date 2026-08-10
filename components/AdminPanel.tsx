@@ -22,10 +22,22 @@ type AccountSummary = {
   linkedStudents?: Student[];
 };
 type CreatedAccount = AccountSummary;
+type InviteStatus = "pending" | "used" | "expired" | "revoked";
+type InviteSummary = {
+  id: string;
+  token: string;
+  students: Student[];
+  expiresAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  status: InviteStatus;
+};
 
 const roleLabels: Record<Role, string> = { admin: "관리자", teacher: "교사", parent: "학부모" };
 const statusLabels: Record<Status, string> = { active: "정상", missing_profile: "프로필 없음", missing_role: "권한 확인 필요", unconfirmed_email: "이메일 미확인", inconsistent: "정보 불일치" };
 const repairableStatuses: Status[] = ["missing_profile", "missing_role", "inconsistent"];
+const inviteStatusLabels: Record<InviteStatus, string> = { pending: "대기 중", used: "사용됨", expired: "만료됨", revoked: "취소됨" };
 
 async function parseApiResponse(response: Response) {
   const text = await response.text();
@@ -61,6 +73,13 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
+  const [invites, setInvites] = useState<InviteSummary[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [inviteStudentIds, setInviteStudentIds] = useState<string[]>([]);
+  const [inviteExpiryDays, setInviteExpiryDays] = useState(7);
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState<Feedback | null>(null);
+  const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
 
   const loadAccounts = useCallback(async () => {
     setDirectoryLoading(true);
@@ -76,11 +95,80 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     }
   }, []);
 
+  const loadInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    try {
+      const response = await fetch("/api/admin/invites", { cache: "no-store" });
+      const result = await parseApiResponse(response) as { error?: string; invites?: InviteSummary[] };
+      if (!response.ok) throw new Error(result.error || "초대 목록을 불러오지 못했습니다.");
+      setInvites(result.invites || []);
+    } catch (error) {
+      setInviteFeedback({ type: "error", text: error instanceof Error ? error.message : "초대 목록을 불러오지 못했습니다." });
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const supabase = createClient();
     void supabase.from("students").select("id,name,grade").order("grade").order("name").then(({ data }) => setStudents(data || []));
     void loadAccounts();
-  }, [loadAccounts]);
+    void loadInvites();
+  }, [loadAccounts, loadInvites]);
+
+  function toggleInviteStudent(id: string) {
+    setInviteStudentIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  }
+
+  function inviteUrl(token: string) {
+    return `${window.location.origin}/signup?token=${token}`;
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setInviteFeedback({ type: "success", text: "초대 링크를 복사했습니다." });
+    } catch {
+      setInviteFeedback({ type: "error", text: "링크 복사에 실패했습니다. 직접 선택해 복사해주세요." });
+    }
+  }
+
+  async function generateInvite() {
+    if (!inviteStudentIds.length || inviteSubmitting) return;
+    setInviteSubmitting(true);
+    setInviteFeedback(null);
+    setGeneratedInviteUrl("");
+    try {
+      const response = await fetch("/api/admin/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: inviteStudentIds, expiresInDays: inviteExpiryDays }),
+      });
+      const result = await parseApiResponse(response) as { error?: string; invite?: { token: string } };
+      if (!response.ok || !result.invite) throw new Error(result.error || "초대 링크 생성에 실패했습니다.");
+      setGeneratedInviteUrl(inviteUrl(result.invite.token));
+      setInviteStudentIds([]);
+      setInviteFeedback({ type: "success", text: "초대 링크를 생성했습니다. 학부모에게 링크를 전달해주세요." });
+      void loadInvites();
+    } catch (error) {
+      setInviteFeedback({ type: "error", text: error instanceof Error ? error.message : "초대 링크 생성에 실패했습니다." });
+    } finally {
+      setInviteSubmitting(false);
+    }
+  }
+
+  async function revokeInvite(id: string) {
+    setInviteFeedback(null);
+    try {
+      const response = await fetch(`/api/admin/invites/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result.error || "초대 링크 취소에 실패했습니다.");
+      setInviteFeedback({ type: "success", text: result.message || "초대 링크를 취소했습니다." });
+      void loadInvites();
+    } catch (error) {
+      setInviteFeedback({ type: "error", text: error instanceof Error ? error.message : "초대 링크 취소에 실패했습니다." });
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -298,7 +386,67 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         </div>
       </section>
 
+      <section className="content-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">PARENT INVITES</p>
+            <h2>학부모 초대 링크</h2>
+          </div>
+          <button type="button" className="secondary" onClick={loadInvites} disabled={invitesLoading}>{invitesLoading ? "확인 중..." : "새로고침"}</button>
+        </div>
+        <p className="muted">학생을 선택해 링크를 생성하면, 학부모가 직접 이메일과 비밀번호를 입력해 계정을 만들고 선택한 학생과 자동으로 연결됩니다. 링크는 1회만 사용할 수 있습니다.</p>
+        <div className="two-columns">
+          <div>
+            <label>연결할 학생</label>
+            <div className="check-grid">
+              {students.map((student) => (
+                <label className="check-card" key={student.id}>
+                  <input type="checkbox" checked={inviteStudentIds.includes(student.id)} onChange={() => toggleInviteStudent(student.id)} />
+                  <span><b>{student.name}</b><small>{student.grade}</small></span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label>유효기간</label>
+            <select value={inviteExpiryDays} onChange={(e) => setInviteExpiryDays(Number(e.target.value))}>
+              <option value={3}>3일</option>
+              <option value={7}>7일</option>
+              <option value={14}>14일</option>
+              <option value={30}>30일</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" className="primary" onClick={generateInvite} disabled={inviteSubmitting || !inviteStudentIds.length}>{inviteSubmitting ? "생성 중..." : "초대 링크 생성"}</button>
+        {generatedInviteUrl && (
+          <div className="attachment-item">
+            <span>{generatedInviteUrl}</span>
+            <button type="button" className="secondary" onClick={() => copyToClipboard(generatedInviteUrl)}>복사</button>
+          </div>
+        )}
+        {inviteFeedback && <p role={inviteFeedback.type === "success" ? "status" : "alert"} className={inviteFeedback.type === "success" ? "success-message" : "form-error"}>{inviteFeedback.text}</p>}
 
+        <div className="account-list">
+          {invites.map((invite) => (
+            <article className="account-card" key={invite.id}>
+              <div>
+                <strong>{invite.students.map((student) => `${student.name} (${student.grade})`).join(", ") || "대상 없음"}</strong>
+                <small>{new Date(invite.createdAt).toLocaleString("ko-KR")} 생성 · {new Date(invite.expiresAt).toLocaleString("ko-KR")} 만료</small>
+              </div>
+              <div className="account-meta">
+                <span className="pill">{inviteStatusLabels[invite.status]}</span>
+              </div>
+              {invite.status === "pending" && (
+                <div className="account-actions">
+                  <button type="button" className="secondary" onClick={() => copyToClipboard(inviteUrl(invite.token))}>링크 복사</button>
+                  <button type="button" className="danger-button" onClick={() => revokeInvite(invite.id)}>취소</button>
+                </div>
+              )}
+            </article>
+          ))}
+          {!invites.length && <div className="empty-state">생성된 초대 링크가 없습니다.</div>}
+        </div>
+      </section>
 
       {deleteTarget && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
