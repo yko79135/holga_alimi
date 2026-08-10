@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const INVITE_DEFAULT_EXPIRY_DAYS = 30;
 export const INVITE_MAX_EXPIRY_DAYS = 30;
+export const MAX_CHILDREN_PER_SIGNUP = 5;
 
 /** Trim + collapse internal whitespace, case-insensitive. No fuzzy matching -- a false-positive
  * match here means linking a parent to the wrong child's records, which is worse than asking
