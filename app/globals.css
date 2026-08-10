@@ -157,6 +157,25 @@ h3 {
   margin: 0;
   color: var(--teal-900);
 }
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.topbar-logo-link {
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.topbar-logo-link:focus-visible {
+  outline: 3px solid rgba(136, 200, 192, 0.55);
+  outline-offset: 2px;
+}
+.topbar-logo {
+  display: block;
+  width: 44px;
+  height: 42px;
+  object-fit: contain;
+}
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -880,6 +899,10 @@ h3 {
   }
   .topbar .eyebrow {
     display: none;
+  }
+  .topbar-logo {
+    width: 34px;
+    height: 32px;
   }
   .topbar-actions {
     flex-direction: column;

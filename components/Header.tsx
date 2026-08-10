@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, roleLabel } from "@/lib/roles";
@@ -25,7 +27,12 @@ export default function Header({ name, roles, activeView = "staff", currentPage 
 
   return (
     <header className="topbar">
-      <div><p className="eyebrow">{process.env.NEXT_PUBLIC_SCHOOL_NAME || "우리학교 학부모 포털"}</p><h1>{name}님, 안녕하세요.</h1><p className="muted">현재 {activeLabel}</p></div>
+      <div className="topbar-brand">
+        <Link href="/dashboard" className="topbar-logo-link" aria-label="메인 화면으로 이동">
+          <Image className="topbar-logo" src="/branding/holy-guide-logo.png" alt="" width={44} height={42} priority />
+        </Link>
+        <div><p className="eyebrow">{process.env.NEXT_PUBLIC_SCHOOL_NAME || "우리학교 학부모 포털"}</p><h1>{name}님, 안녕하세요.</h1><p className="muted">현재 {activeLabel}</p></div>
+      </div>
       <div className="topbar-actions">
         <div className="role-badges" aria-label="보유 권한">{safeRoles.map((r) => <span className={`role-badge role-${r}`} key={r}>{roleLabel(r)}</span>)}</div>
         {currentPage === "dashboard" && canStaff && canParent && onViewChange && <div className="view-switcher" role="tablist" aria-label="화면 전환"><button type="button" role="tab" aria-selected={activeView === "staff"} className={activeView === "staff" ? "filter active" : "filter"} onClick={() => onViewChange("staff")}>{staffRole === "admin" ? "관리자 화면" : "교사 화면"}</button><button type="button" role="tab" aria-selected={activeView === "parent"} className={activeView === "parent" ? "filter active" : "filter"} onClick={() => onViewChange("parent")}>학부모 화면</button></div>}
