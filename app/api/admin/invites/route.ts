@@ -10,24 +10,34 @@ export async function GET() {
   if ("error" in auth) return auth.error;
 
   const admin = createAdminClient();
-  const { data, error } = await admin.from("signup_invites").select("id,token,student_ids,expires_at,used_at,revoked_at,created_at").order("created_at", { ascending: false }).limit(100);
+  const { data, error } = await admin.from("signup_invites").select("id,token,expires_at,revoked_at,created_at").order("created_at", { ascending: false }).limit(100);
   if (error) return adminJsonError("초대 목록을 불러오지 못했습니다.", 500);
 
-  // student_ids is populated after redemption now (which student this link ended up connecting
-  // to), not chosen in advance -- so this is an audit trail, not a target list.
-  const studentIds = Array.from(new Set((data || []).flatMap((row: any) => row.student_ids || [])));
+  const inviteIds = (data || []).map((row: any) => row.id);
+  const { data: redemptions } = inviteIds.length
+    ? await admin.from("signup_invite_redemptions").select("invite_id,student_id,created_at").in("invite_id", inviteIds).order("created_at", { ascending: false })
+    : { data: [] };
+  const studentIds = Array.from(new Set((redemptions || []).map((row: any) => row.student_id)));
   const { data: students } = studentIds.length ? await admin.from("students").select("id,name,grade").in("id", studentIds) : { data: [] };
   const studentMap = new Map((students || []).map((student: any) => [student.id, student]));
+
+  const redemptionsByInvite = new Map<string, Array<{ name: string; grade: string; createdAt: string }>>();
+  for (const row of (redemptions || []) as any[]) {
+    const student = studentMap.get(row.student_id);
+    if (!student) continue;
+    const list = redemptionsByInvite.get(row.invite_id) || [];
+    list.push({ name: student.name, grade: student.grade, createdAt: row.created_at });
+    redemptionsByInvite.set(row.invite_id, list);
+  }
 
   const invites = (data || []).map((row: any) => ({
     id: row.id,
     token: row.token,
-    linkedStudents: (row.student_ids || []).map((id: string) => studentMap.get(id)).filter(Boolean),
     expiresAt: row.expires_at,
-    usedAt: row.used_at,
     revokedAt: row.revoked_at,
     createdAt: row.created_at,
     status: inviteStatus(row),
+    redemptions: redemptionsByInvite.get(row.id) || [],
   }));
 
   return NextResponse.json({ invites });

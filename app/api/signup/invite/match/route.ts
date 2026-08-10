@@ -12,10 +12,10 @@ export async function POST(request: Request) {
 
   if (!studentName || !studentGrade) return NextResponse.json({ error: "학생 이름과 학년을 입력해주세요." }, { status: 400 });
 
-  // Gate this behind a valid, unused, unexpired token -- without this check, anyone could probe
-  // arbitrary name+grade combinations to enumerate the student roster.
+  // Gate this behind a valid, unexpired, unrevoked token -- without this check, anyone could
+  // probe arbitrary name+grade combinations to enumerate the student roster.
   const admin = createAdminClient();
-  const { data: invite } = await admin.from("signup_invites").select("used_at,revoked_at,expires_at").eq("token", token).maybeSingle();
+  const { data: invite } = await admin.from("signup_invites").select("revoked_at,expires_at").eq("token", token).maybeSingle();
   if (!invite) return NextResponse.json({ error: "초대 링크가 유효하지 않습니다." }, { status: 400 });
   const reason = invalidInviteReason(invite);
   if (reason) return NextResponse.json({ error: reason }, { status: 400 });
