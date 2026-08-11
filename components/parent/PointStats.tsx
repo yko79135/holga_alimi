@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import type { MonthlyWarningBreakdown } from "@/lib/warnings/stats";
+import type { PointKind } from "@/lib/warnings/categories";
 
 type StatsStudent = {
   id: string;
@@ -14,8 +15,13 @@ type StatsStudent = {
 };
 
 const now = new Date();
+const KIND_META: Record<PointKind, { eyebrow: string; title: string; unit: string; description: string; empty: string }> = {
+  discipline: { eyebrow: "DISCIPLINE STATS", title: "훈계 통계", unit: "점", description: "자녀별 학기 훈계 점수 합계를 확인할 수 있습니다.", empty: "이번 학기 훈계 점수 기록이 없습니다." },
+  praise: { eyebrow: "STICKER STATS", title: "스티커 통계", unit: "점", description: "자녀별 학기 칭찬 점수(스티커) 합계를 확인할 수 있습니다.", empty: "이번 학기 칭찬 점수 기록이 없습니다." },
+};
 
-export default function ParentWarningStats() {
+export default function ParentPointStats({ kind }: { kind: PointKind }) {
+  const meta = KIND_META[kind];
   const [year, setYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState(now.getMonth() < 7 ? 1 : 2);
   const [rows, setRows] = useState<StatsStudent[]>([]);
@@ -27,31 +33,31 @@ export default function ParentWarningStats() {
     setLoading(true);
     setErr("");
     try {
-      const response = await fetch(`/api/parent/warning-stats?year=${year}&semester=${semester}`, { cache: "no-store" });
+      const response = await fetch(`/api/parent/point-stats?year=${year}&semester=${semester}&kind=${kind}`, { cache: "no-store" });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "벌점 통계를 불러오지 못했습니다.");
+      if (!response.ok) throw new Error(result.error || "통계를 불러오지 못했습니다.");
       setRows(result.students || []);
     } catch (error) {
-      setErr(error instanceof Error ? error.message : "벌점 통계를 불러오지 못했습니다.");
+      setErr(error instanceof Error ? error.message : "통계를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [year, semester]);
+  }, [year, semester, kind]);
 
   useEffect(() => { void load(); }, [load]);
-  useLiveRefresh({ channelName: "parent-warning-stats", tables: [{ table: "warning_entries" }], onRefresh: () => { void load(); } });
+  useLiveRefresh({ channelName: `parent-point-stats-${kind}`, tables: [{ table: "warning_entries" }], onRefresh: () => { void load(); } });
 
-  const totalWarnings = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
+  const total = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
 
   return (
     <section className="content-card">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">PENALTY STATS</p>
-          <h2>벌점 통계</h2>
-          <p className="muted">자녀별 학기 벌점 합계를 확인할 수 있습니다.</p>
+          <p className="eyebrow">{meta.eyebrow}</p>
+          <h2>{meta.title}</h2>
+          <p className="muted">{meta.description}</p>
         </div>
-        <span className="pill">학기 벌점 합계 {totalWarnings}점</span>
+        <span className="pill">학기 합계 {total}{meta.unit}</span>
       </div>
 
       <div className="warning-toolbar">
@@ -70,7 +76,7 @@ export default function ParentWarningStats() {
               <div className="account-meta">
                 <strong>{row.name}</strong>
                 <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span>
-                <span className="pill">학기 합계 {row.semesterTotal}점</span>
+                <span className="pill">학기 합계 {row.semesterTotal}{meta.unit}</span>
               </div>
               <div className="account-actions">
                 <button type="button" className="secondary" onClick={() => setExpandedId(isOpen ? null : row.id)}>
@@ -83,12 +89,12 @@ export default function ParentWarningStats() {
                     {row.monthly.map((entry) => (
                       <div key={entry.month}>
                         <dt>{entry.month}월</dt>
-                        <dd>{entry.total}점</dd>
+                        <dd>{entry.total}{meta.unit}</dd>
                       </div>
                     ))}
                   </dl>
                 ) : (
-                  <p className="muted">이번 학기 벌점 기록이 없습니다.</p>
+                  <p className="muted">{meta.empty}</p>
                 )
               )}
             </article>

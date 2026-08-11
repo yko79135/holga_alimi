@@ -8,7 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/types";
 import { noticeTypeLabel } from "@/lib/notices";
 import ParentAttendanceStats from "@/components/parent/AttendanceStats";
-import ParentWarningStats from "@/components/parent/WarningStats";
+import ParentPointStats from "@/components/parent/PointStats";
 
 type Student = {
   id: string;
@@ -54,7 +54,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [warningRows, setWarningRows] = useState<any[]>([]);
   const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
-  const [tab, setTab] = useState<"notices" | "attendance" | "attendance-stats" | "warnings" | "warning-stats">("notices");
+  const [tab, setTab] = useState<"notices" | "attendance" | "attendance-stats" | "warnings" | "discipline-stats" | "praise-stats">("notices");
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -296,16 +296,17 @@ export default function ParentDashboard({ userId }: { userId: string }) {
             <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>학교 알림</button>
             <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 현황</button>
             <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
-            <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>벌점 현황</button>
-            <button className={tab === "warning-stats" ? "active" : ""} onClick={() => setTab("warning-stats")}>벌점 통계</button>
+            <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>훈계 현황</button>
+            <button className={tab === "discipline-stats" ? "active" : ""} onClick={() => setTab("discipline-stats")}>훈계 통계</button>
+            <button className={tab === "praise-stats" ? "active" : ""} onClick={() => setTab("praise-stats")}>스티커 통계</button>
           </nav>
 
           {(tab === "attendance" || tab === "warnings") && (
             <section className="content-card parent-warning-card">
               <div className="section-heading parent-notice-heading">
                 <div>
-                  <p className="eyebrow">{tab === "attendance" ? "ATTENDANCE STATUS" : "PENALTY STATUS"}</p>
-                  <h2>{tab === "attendance" ? "출석 현황" : "벌점 현황"}</h2>
+                  <p className="eyebrow">{tab === "attendance" ? "ATTENDANCE STATUS" : "DISCIPLINE STATUS"}</p>
+                  <h2>{tab === "attendance" ? "출석 현황" : "훈계 현황"}</h2>
                 </div>
               </div>
               <div className="sent-list">
@@ -335,7 +336,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                       className="sent-card"
                       key={w.id || `${w.student_id}-${w.created_at}`}
                     >
-                      <span className="tag warning">벌점</span>
+                      <span className="tag warning">훈계 점수</span>
                       <h3>
                         {w.entry_type === "grace_adjustment"
                           ? "은혜의 희월"
@@ -348,14 +349,15 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                     </article>
                   ))
                 ) : (
-                  <p className="muted">표시할 벌점 내역이 없습니다.</p>
+                  <p className="muted">표시할 훈계 점수 내역이 없습니다.</p>
                 )}
               </div>
             </section>
           )}
 
           {tab === "attendance-stats" && <ParentAttendanceStats />}
-          {tab === "warning-stats" && <ParentWarningStats />}
+          {tab === "discipline-stats" && <ParentPointStats kind="discipline" />}
+          {tab === "praise-stats" && <ParentPointStats kind="praise" />}
 
           {tab === "notices" && (
             <section className="content-card parent-notice-card">
