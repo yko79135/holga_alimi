@@ -27,13 +27,15 @@ export const PRAISE_CATEGORIES = [
 export const POINT_KIND_LABELS: Record<PointKind, string> = { discipline: "훈계 점수", praise: "칭찬 점수" };
 export const DEFAULT_POINT_VALUE = 1;
 export const MAX_POINT_VALUE = 20;
+export const CUSTOM_CATEGORY = "직접 입력";
 
 export function isValidPointValue(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= MAX_POINT_VALUE;
 }
 
+/** Includes the CUSTOM_CATEGORY sentinel so it shows up as a selectable dropdown option. */
 export function categoriesForKind(kind: PointKind): readonly string[] {
-  return kind === "discipline" ? DISCIPLINE_CATEGORIES : PRAISE_CATEGORIES;
+  return [...(kind === "discipline" ? DISCIPLINE_CATEGORIES : PRAISE_CATEGORIES), CUSTOM_CATEGORY];
 }
 
 export function isValidCategory(kind: PointKind, category: string): boolean {
