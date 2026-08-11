@@ -9,8 +9,8 @@ export function warningDelta(previousValue: number, newValue: number) {
 export function buildWarningReasonTemplate(params: { studentName: string; previousValue: number; newValue: number; entryType: WarningEntryType }) {
   const delta = warningDelta(params.previousValue, params.newValue);
   if (params.entryType === "grace_adjustment") return `${params.studentName} 은혜의 희월 조정 - `;
-  if (delta < 0) return `${params.studentName} 벌점 ${Math.abs(delta)}점 정정 - `;
-  return `${params.studentName} 벌점 ${delta}점 부여 - `;
+  if (delta < 0) return `${params.studentName} 훈계 점수 ${Math.abs(delta)}점 정정 - `;
+  return `${params.studentName} 훈계 점수 ${delta}점 부여 - `;
 }
 
 export function hasMeaningfulReasonAfterTemplate(value: string, template: string) {
@@ -24,5 +24,5 @@ export function hasMeaningfulReasonAfterTemplate(value: string, template: string
 
 export function warningReasonErrorMessage(entryType: WarningEntryType, delta: number) {
   if (entryType === "grace_adjustment" || delta < 0) return "정정 사유를 입력해 주세요.";
-  return "벌점 사유를 입력해 주세요.";
+  return "훈계 점수 사유를 입력해 주세요.";
 }

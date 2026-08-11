@@ -11,5 +11,5 @@ export async function GET(req: Request) {
   let q = s.from("warning_entries").select("id,student_id,warning_date,entry_type,previous_value,new_value,delta,change_type,parent_visible_reason,teacher_note,created_at,profiles(full_name),warning_generated_notices(notice_id,recipient_count,push_sent_count,push_failed_count)").order("created_at", { ascending: false }).limit(200);
   if (studentId) q = q.eq("student_id", studentId);
   const { data, error } = await q;
-  return NextResponse.json(error ? { error: "벌점 감사 기록을 불러오지 못했습니다." } : { entries: data || [] }, { status: error ? 500 : 200 });
+  return NextResponse.json(error ? { error: "훈계 점수 감사 기록을 불러오지 못했습니다." } : { entries: data || [] }, { status: error ? 500 : 200 });
 }

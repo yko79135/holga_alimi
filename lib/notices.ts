@@ -1,6 +1,6 @@
 export const NOTICE_TYPE_LABELS: Record<string, string> = {
   newsletter: "가정통신문",
-  warning: "학생 벌점",
+  warning: "훈계 점수",
   guidance: "생활지도",
   consultation: "상담 안내",
   urgent: "긴급 공지",

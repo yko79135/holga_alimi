@@ -11,9 +11,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SAFE_SAVE_ERROR = "벌점 내역을 저장하지 못했습니다. 다시 시도해 주세요.";
+const SAFE_SAVE_ERROR = "훈계 점수 내역을 저장하지 못했습니다. 다시 시도해 주세요.";
 const SAVE_ERROR_CODE = "WARNING_SAVE_FAILED";
-const CONFLICT_ERROR = "다른 사용자가 이 벌점 내역을 먼저 변경했습니다. 최신 내용을 확인한 후 다시 저장해 주세요.";
+const CONFLICT_ERROR = "다른 사용자가 이 훈계 점수 내역을 먼저 변경했습니다. 최신 내용을 확인한 후 다시 저장해 주세요.";
 
 type StaffAuth = { supabase: Awaited<ReturnType<typeof createClient>>; user: { id: string }; role: string };
 
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "저장할 변경사항을 확인해주세요." }, { status: 400 });
     }
     if (change.entryType === "daily" && !isDateOnly(change.date)) {
-      return NextResponse.json({ error: "벌점 날짜 형식을 확인해주세요." }, { status: 400 });
+      return NextResponse.json({ error: "훈계 점수 날짜 형식을 확인해주세요." }, { status: 400 });
     }
   }
 
@@ -214,5 +214,5 @@ export async function POST(req: Request) {
   }
 
   logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "save-complete", table: "warning_entries", insertedRowCount: entryRes.data.length, refetchResult: "client-grid-refetch-required" });
-  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_started: createdNotices.length > 0, message: "벌점 내역과 학부모 알림이 저장되었습니다. 푸시 알림 전송을 시작했습니다.", batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, missingParentStudentIds: missing });
+  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_started: createdNotices.length > 0, message: "훈계 점수 내역과 학부모 알림이 저장되었습니다. 푸시 알림 전송을 시작했습니다.", batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, missingParentStudentIds: missing });
 }
