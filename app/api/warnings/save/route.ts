@@ -6,6 +6,7 @@ import { effectiveStaffRole } from "@/lib/roles";
 import { buildWarningNotice, changeType } from "@/lib/warnings/format";
 import { buildWarningReasonTemplate, hasMeaningfulReasonAfterTemplate, warningDelta, warningReasonErrorMessage } from "@/lib/warnings/reasons";
 import type { WarningCellChange } from "@/lib/warnings/types";
+import type { PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
   const academicYear = Number(body.academicYear);
   const semester = Number(body.semester);
   const month = Number(body.month);
+  const kind: PointKind = body.kind === "praise" ? "praise" : "discipline";
   const idempotencyKey = String(body.idempotencyKey || "");
   const affectedStudentIds = Array.from(new Set(changes.map((change) => change.studentId).filter(Boolean)));
   const baseDiagnostic = { requestId, userId: a.user.id, role: a.role, submittedChangeCount: changes.length, affectedStudentIds, academicYear, semester, month, saveMethod: "authenticated-rls-insert" as const };
@@ -111,10 +113,10 @@ export async function POST(req: Request) {
     if (!student?.name) return NextResponse.json({ error: "학생 정보를 확인할 수 없습니다." }, { status: 400 });
     const delta = warningDelta(Number(change.previousValue), Number(change.newValue));
     if (delta === 0) continue;
-    const template = buildWarningReasonTemplate({ studentName: student.name, previousValue: Number(change.previousValue), newValue: Number(change.newValue), entryType: change.entryType });
+    const template = buildWarningReasonTemplate({ studentName: student.name, previousValue: Number(change.previousValue), newValue: Number(change.newValue), entryType: change.entryType, kind });
     const parentVisibleReason = String(change.parentVisibleReason || "").trim();
     if (!hasMeaningfulReasonAfterTemplate(parentVisibleReason, template)) {
-      return NextResponse.json({ error: warningReasonErrorMessage(change.entryType, delta) }, { status: 400 });
+      return NextResponse.json({ error: warningReasonErrorMessage(change.entryType, delta, kind) }, { status: 400 });
     }
   }
 
@@ -122,9 +124,9 @@ export async function POST(req: Request) {
   if (existing.error) return failure({ ...baseDiagnostic, operation: "select", table: "warning_change_batches", errorCode: existing.error.code, errorMessage: existing.error.message });
   if (existing.data) return NextResponse.json({ success: true, warning_saved: true, idempotent: true, message: "이미 처리된 변경사항입니다.", batch_id: existing.data.id, batchId: existing.data.id, affected_students: affectedStudentIds.length, inserted_entries: 0, notices_created: 0 });
 
-  const currentRes = await a.supabase.from("warning_entries").select("student_id,warning_date,entry_type,delta,month").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester);
+  const currentRes = await a.supabase.from("warning_entries").select("student_id,warning_date,entry_type,delta,month,kind").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester);
   if (currentRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "warning_entries", errorCode: currentRes.error.code, errorMessage: currentRes.error.message });
-  const current = currentRes.data || [];
+  const current = (currentRes.data || []).filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"));
   for (const change of changes) {
     const currentValue = current.filter((entry: any) => entry.student_id === change.studentId && entry.entry_type === change.entryType && (change.entryType === "grace_adjustment" ? entry.month === month : entry.warning_date === change.date)).reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
     if (currentValue !== Number(change.previousValue)) {
@@ -140,7 +142,7 @@ export async function POST(req: Request) {
 
   const rows = changes.map((change) => {
     const delta = Number(change.newValue) - Number(change.previousValue);
-    return { batch_id: batchId, student_id: change.studentId, warning_date: change.entryType === "daily" ? change.date : null, academic_year: academicYear, semester, month, entry_type: change.entryType, change_type: changeType(delta, change.entryType), previous_value: Number(change.previousValue), new_value: Number(change.newValue), delta, parent_visible_reason: String(change.parentVisibleReason || "").trim() || null, teacher_note: change.teacherNote || null, author_id: a.user.id };
+    return { batch_id: batchId, student_id: change.studentId, warning_date: change.entryType === "daily" ? change.date : null, academic_year: academicYear, semester, month, entry_type: change.entryType, change_type: changeType(delta, change.entryType), previous_value: Number(change.previousValue), new_value: Number(change.newValue), delta, kind, parent_visible_reason: String(change.parentVisibleReason || "").trim() || null, teacher_note: change.teacherNote || null, author_id: a.user.id };
   }).filter((row) => row.delta !== 0);
   if (!rows.length) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "warning_entries", errorCode: "ZERO_DELTA_ROWS", errorMessage: "No non-zero warning entry rows were generated.", insertedRowCount: 0 });
 
@@ -152,11 +154,12 @@ export async function POST(req: Request) {
 
   const noticeStart = process.env.NODE_ENV !== "production" ? performance.now() : 0;
   const [allEntriesRes, linksRes] = await Promise.all([
-    a.supabase.from("warning_entries").select("student_id,delta,month").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester),
+    a.supabase.from("warning_entries").select("student_id,delta,month,kind").in("student_id", affectedStudentIds).eq("academic_year", academicYear).eq("semester", semester),
     a.supabase.from("parent_students").select("student_id,parent_id").in("student_id", affectedStudentIds),
   ]);
   if (allEntriesRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "warning_entries", errorCode: allEntriesRes.error.code, errorMessage: allEntriesRes.error.message, insertedRowCount: entryRes.data.length });
   if (linksRes.error) return failure({ ...baseDiagnostic, batchId, operation: "select", table: "parent_students", errorCode: linksRes.error.code, errorMessage: linksRes.error.message, insertedRowCount: entryRes.data.length });
+  const kindEntries = (allEntriesRes.data || []).filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"));
 
   let notices = 0, recipients = 0;
   const missing: string[] = [];
@@ -164,9 +167,9 @@ export async function POST(req: Request) {
   for (const studentId of affectedStudentIds) {
     const student = (submittedStudentsRes.data || []).find((s: any) => s.id === studentId);
     const perStudentChanges = changes.filter((change) => change.studentId === studentId);
-    const total = monthTotal(allEntriesRes.data || [], studentId, month);
-    const content = buildWarningNotice(student?.name || "학생", perStudentChanges, total);
-    const noticeRes = await a.supabase.from("notices").insert({ type: "warning", title: content.title, body: content.body, target_scope: "student", requires_confirmation: true, created_by: a.user.id, published_at: new Date().toISOString(), source_type: "warning_update", source_id: batchId }).select("id,target_scope,target_grade").single();
+    const total = monthTotal(kindEntries, studentId, month);
+    const content = buildWarningNotice(student?.name || "학생", perStudentChanges, total, kind);
+    const noticeRes = await a.supabase.from("notices").insert({ type: kind === "praise" ? "praise" : "warning", title: content.title, body: content.body, target_scope: "student", requires_confirmation: true, created_by: a.user.id, published_at: new Date().toISOString(), source_type: kind === "praise" ? "praise_update" : "warning_update", source_id: batchId }).select("id,target_scope,target_grade").single();
     if (noticeRes.error || !noticeRes.data) {
       logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "insert", table: "notices", errorCode: noticeRes.error?.code, errorMessage: noticeRes.error?.message, insertedRowCount: entryRes.data.length });
       continue;
@@ -188,7 +191,7 @@ export async function POST(req: Request) {
 
   const parentIds = Array.from(new Set((linksRes.data || []).map((link: any) => link.parent_id).filter(Boolean)));
   if (parentIds.length) {
-    const eventRes = await a.supabase.from("parent_dashboard_events").insert(parentIds.map((parentId) => ({ parent_id: parentId, event_type: "warning_updated", entity_id: batchId })));
+    const eventRes = await a.supabase.from("parent_dashboard_events").insert(parentIds.map((parentId) => ({ parent_id: parentId, event_type: kind === "praise" ? "praise_updated" : "warning_updated", entity_id: batchId })));
     if (eventRes.error) return failure({ ...baseDiagnostic, batchId, operation: "insert", table: "parent_dashboard_events", errorCode: eventRes.error.code, errorMessage: eventRes.error.message, insertedRowCount: entryRes.data.length });
   }
   if (process.env.NODE_ENV !== "production") console.debug("warning-notice-generation", { durationMs: Math.round(performance.now() - noticeStart), notices, parentEvents: parentIds.length });
@@ -214,5 +217,5 @@ export async function POST(req: Request) {
   }
 
   logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "save-complete", table: "warning_entries", insertedRowCount: entryRes.data.length, refetchResult: "client-grid-refetch-required" });
-  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_started: createdNotices.length > 0, message: "훈계 점수 내역과 학부모 알림이 저장되었습니다. 푸시 알림 전송을 시작했습니다.", batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, missingParentStudentIds: missing });
+  return NextResponse.json({ success: true, warning_saved: true, notice_created: notices > 0, push_started: createdNotices.length > 0, message: `${kind === "praise" ? "칭찬 점수" : "훈계 점수"} 내역과 학부모 알림이 저장되었습니다. 푸시 알림 전송을 시작했습니다.`, batch_id: batchId, batchId, affected_students: affectedStudentIds.length, inserted_entries: entryRes.data.length, notices_created: notices, notices, recipients, missingParentStudentIds: missing });
 }

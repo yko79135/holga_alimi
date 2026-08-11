@@ -2,8 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import type { MonthlyWarningBreakdown } from "@/lib/warnings/stats";
-import type { PointKind } from "@/lib/warnings/categories";
+import type { MonthlyWarningBreakdown, WarningStudentSummary } from "@/lib/warnings/stats";
 
 type StatsStudent = {
   id: string;
@@ -11,18 +10,22 @@ type StatsStudent = {
   grade: string;
   homeroom: string | null;
   parentCount: number;
-  semesterTotal: number;
-  monthly: MonthlyWarningBreakdown[];
+  discipline: WarningStudentSummary;
+  praise: WarningStudentSummary;
 };
 
 const now = new Date();
-const KIND_META: Record<PointKind, { eyebrow: string; title: string; unit: string; description: string; empty: string }> = {
-  discipline: { eyebrow: "DISCIPLINE STATS", title: "훈계 통계", unit: "점", description: "학생을 선택하면 월별 훈계 점수 내역을 확인할 수 있습니다.", empty: "이번 학기 훈계 점수 기록이 없습니다." },
-  praise: { eyebrow: "STICKER STATS", title: "스티커 통계", unit: "점", description: "학생을 선택하면 월별 칭찬 점수(스티커) 내역을 확인할 수 있습니다.", empty: "이번 학기 칭찬 점수 기록이 없습니다." },
-};
 
-export default function PointStats({ role, kind }: { role: string; kind: PointKind }) {
-  const meta = KIND_META[kind];
+function mergeMonthly(discipline: MonthlyWarningBreakdown[], praise: MonthlyWarningBreakdown[]) {
+  const months = Array.from(new Set([...discipline.map((m) => m.month), ...praise.map((m) => m.month)])).sort((a, b) => a - b);
+  return months.map((month) => ({
+    month,
+    discipline: discipline.find((m) => m.month === month)?.total ?? 0,
+    praise: praise.find((m) => m.month === month)?.total ?? 0,
+  }));
+}
+
+export default function PointStats({ role }: { role: string }) {
   const [year, setYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState(now.getMonth() < 7 ? 1 : 2);
   const [grade, setGrade] = useState("");
@@ -36,7 +39,7 @@ export default function PointStats({ role, kind }: { role: string; kind: PointKi
     setLoading(true);
     setErr("");
     try {
-      const response = await fetch(`/api/warnings/points-stats?year=${year}&semester=${semester}&grade=${encodeURIComponent(grade)}&student=${encodeURIComponent(q)}&kind=${kind}`, { cache: "no-store" });
+      const response = await fetch(`/api/warnings/points-stats?year=${year}&semester=${semester}&grade=${encodeURIComponent(grade)}&student=${encodeURIComponent(q)}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "통계를 불러오지 못했습니다.");
       setRows(result.students || []);
@@ -45,24 +48,25 @@ export default function PointStats({ role, kind }: { role: string; kind: PointKi
     } finally {
       setLoading(false);
     }
-  }, [year, semester, grade, q, kind]);
+  }, [year, semester, grade, q]);
 
   useEffect(() => { void load(); }, [load]);
-  useLiveRefresh({ channelName: `point-stats-${kind}-${role}`, tables: [{ table: "warning_entries" }, { table: "students" }], onRefresh: () => { void load(); } });
+  useLiveRefresh({ channelName: `point-stats-${role}`, tables: [{ table: "warning_entries" }, { table: "students" }], onRefresh: () => { void load(); } });
 
   const grades = useMemo(() => Array.from(new Set(rows.map((row) => row.grade))).sort(), [rows]);
-  const total = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
-  const columnCount = 5;
+  const disciplineTotal = rows.reduce((sum, row) => sum + (row.discipline?.semesterTotal || 0), 0);
+  const praiseTotal = rows.reduce((sum, row) => sum + (row.praise?.semesterTotal || 0), 0);
+  const columnCount = 6;
 
   return (
     <section className="content-card">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">{meta.eyebrow}</p>
-          <h2>{meta.title}</h2>
-          <p className="muted">{meta.description}</p>
+          <p className="eyebrow">POINT STATS</p>
+          <h2>점수 통계</h2>
+          <p className="muted">학생을 선택하면 월별 훈계 점수·칭찬 점수 내역을 함께 확인할 수 있습니다.</p>
         </div>
-        <span className="pill">학기 합계 {total}{meta.unit}</span>
+        <span className="pill">훈계 {disciplineTotal}점 · 칭찬 {praiseTotal}점</span>
       </div>
 
       <div className="warning-toolbar">
@@ -81,7 +85,8 @@ export default function PointStats({ role, kind }: { role: string; kind: PointKi
             <tr>
               <th className="sticky grade">학년</th>
               <th className="sticky name">학생</th>
-              <th>학기 합계</th>
+              <th>훈계 점수</th>
+              <th>칭찬 점수</th>
               <th>학부모</th>
               <th></th>
             </tr>
@@ -89,29 +94,31 @@ export default function PointStats({ role, kind }: { role: string; kind: PointKi
           <tbody>
             {rows.map((row) => {
               const isOpen = expandedId === row.id;
+              const monthly = mergeMonthly(row.discipline?.monthly || [], row.praise?.monthly || []);
               return (
                 <Fragment key={row.id}>
                   <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => setExpandedId(isOpen ? null : row.id)}>
                     <td className="sticky grade"><b>{row.grade}</b></td>
                     <td className="sticky name">{row.name}</td>
-                    <td><b>{row.semesterTotal}{meta.unit}</b></td>
+                    <td><b>{row.discipline?.semesterTotal ?? 0}점</b></td>
+                    <td><b>{row.praise?.semesterTotal ?? 0}점</b></td>
                     <td>{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
                     <td>{isOpen ? "닫기" : "월별 보기"}</td>
                   </tr>
                   {isOpen && (
                     <tr className="attendance-stats-detail-row">
                       <td colSpan={columnCount}>
-                        {row.monthly.length ? (
+                        {monthly.length ? (
                           <table className="attendance-stats-detail">
-                            <thead><tr><th>월</th><th>합계</th></tr></thead>
+                            <thead><tr><th>월</th><th>훈계 점수</th><th>칭찬 점수</th></tr></thead>
                             <tbody>
-                              {row.monthly.map((entry) => (
-                                <tr key={entry.month}><td>{entry.month}월</td><td><b>{entry.total}{meta.unit}</b></td></tr>
+                              {monthly.map((entry) => (
+                                <tr key={entry.month}><td>{entry.month}월</td><td><b>{entry.discipline}점</b></td><td><b>{entry.praise}점</b></td></tr>
                               ))}
                             </tbody>
                           </table>
                         ) : (
-                          <p className="muted">{meta.empty}</p>
+                          <p className="muted">이번 학기 기록이 없습니다.</p>
                         )}
                       </td>
                     </tr>

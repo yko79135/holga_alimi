@@ -4,7 +4,7 @@ import { sendNoticePushes } from "@/lib/push/send";
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { changeType, buildPointNotice } from "@/lib/warnings/format";
-import { PRAISE_CATEGORIES, POINT_VALUE, isValidCategory, type PointKind } from "@/lib/warnings/categories";
+import { POINT_VALUE, isValidCategory, type PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
       new_value: POINT_VALUE,
       delta,
       category,
+      kind,
       class_period_id: classPeriodId,
       parent_visible_reason: parentVisibleReason,
       author_id: user.id,
@@ -108,15 +109,14 @@ export async function POST(req: Request) {
   if (entryRes.error || !entryRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_entries", errorCode: entryRes.error?.code, errorMessage: entryRes.error?.message });
 
   const [allEntriesRes, linksRes] = await Promise.all([
-    supabase.from("warning_entries").select("delta,category").eq("student_id", studentId).eq("academic_year", year).eq("semester", semester).eq("month", month),
+    supabase.from("warning_entries").select("delta,kind").eq("student_id", studentId).eq("academic_year", year).eq("semester", semester).eq("month", month),
     supabase.from("parent_students").select("parent_id").eq("student_id", studentId),
   ]);
   if (allEntriesRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "warning_entries", errorCode: allEntriesRes.error.code, errorMessage: allEntriesRes.error.message });
   if (linksRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "parent_students", errorCode: linksRes.error.code, errorMessage: linksRes.error.message });
 
-  const praiseCategories: readonly string[] = PRAISE_CATEGORIES;
   const monthlyTotal = (allEntriesRes.data || [])
-    .filter((entry: any) => (kind === "praise" ? praiseCategories.includes(entry.category) : !praiseCategories.includes(entry.category)))
+    .filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"))
     .reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
 
   const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category, className: classRes.data.name, detail, monthlyTotal });

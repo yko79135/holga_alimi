@@ -9,6 +9,7 @@ import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/types";
 import { noticeTypeLabel } from "@/lib/notices";
 import ParentAttendanceStats from "@/components/parent/AttendanceStats";
 import ParentPointStats from "@/components/parent/PointStats";
+import StatusSummary from "@/components/parent/StatusSummary";
 
 type Student = {
   id: string;
@@ -54,7 +55,8 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [warningRows, setWarningRows] = useState<any[]>([]);
   const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
-  const [tab, setTab] = useState<"notices" | "attendance" | "attendance-stats" | "warnings" | "discipline-stats" | "praise-stats">("notices");
+  const [praiseRows, setPraiseRows] = useState<any[]>([]);
+  const [tab, setTab] = useState<"notices" | "attendance" | "attendance-stats" | "praise" | "praise-stats" | "warnings" | "discipline-stats">("notices");
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -76,6 +78,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
       setStudents((result.students || []) as Student[]);
       setWarningRows(result.warnings || []);
       setAttendanceRows(result.attendance || []);
+      setPraiseRows(result.praise || []);
       setNotices(nextNotices);
       setSelected((current) => current ? nextNotices.find((notice) => notice.id === current.id) || null : null);
     } catch (error) {
@@ -296,19 +299,23 @@ export default function ParentDashboard({ userId }: { userId: string }) {
             <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>학교 알림</button>
             <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 현황</button>
             <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
+            <button className={tab === "praise" ? "active" : ""} onClick={() => setTab("praise")}>칭찬 현황</button>
+            <button className={tab === "praise-stats" ? "active" : ""} onClick={() => setTab("praise-stats")}>칭찬 통계</button>
             <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>훈계 현황</button>
             <button className={tab === "discipline-stats" ? "active" : ""} onClick={() => setTab("discipline-stats")}>훈계 통계</button>
-            <button className={tab === "praise-stats" ? "active" : ""} onClick={() => setTab("praise-stats")}>스티커 통계</button>
           </nav>
 
-          {(tab === "attendance" || tab === "warnings") && (
+          {(tab === "attendance" || tab === "warnings" || tab === "praise") && (
             <section className="content-card parent-warning-card">
               <div className="section-heading parent-notice-heading">
                 <div>
-                  <p className="eyebrow">{tab === "attendance" ? "ATTENDANCE STATUS" : "DISCIPLINE STATUS"}</p>
-                  <h2>{tab === "attendance" ? "출석 현황" : "훈계 현황"}</h2>
+                  <p className="eyebrow">{tab === "attendance" ? "ATTENDANCE STATUS" : tab === "praise" ? "PRAISE STATUS" : "DISCIPLINE STATUS"}</p>
+                  <h2>{tab === "attendance" ? "출석 현황" : tab === "praise" ? "칭찬 현황" : "훈계 현황"}</h2>
                 </div>
               </div>
+
+              <StatusSummary kind={tab === "attendance" ? "attendance" : tab === "praise" ? "praise" : "discipline"} />
+
               <div className="sent-list">
                 {tab === "attendance" ? (
                   attendanceRows.length ? (
@@ -329,6 +336,28 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                     ))
                   ) : (
                     <p className="muted">표시할 출석 내역이 없습니다.</p>
+                  )
+                ) : tab === "praise" ? (
+                  praiseRows.length ? (
+                    praiseRows.map((w: any) => (
+                      <article
+                        className="sent-card"
+                        key={w.id || `${w.student_id}-${w.created_at}`}
+                      >
+                        <span className="tag praise">칭찬 점수</span>
+                        <h3>
+                          {w.entry_type === "grace_adjustment"
+                            ? "칭찬 조정"
+                            : w.warning_date}
+                        </h3>
+                        <p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>
+                        {w.parent_visible_reason && (
+                          <p className="sent-preview">{w.parent_visible_reason}</p>
+                        )}
+                      </article>
+                    ))
+                  ) : (
+                    <p className="muted">표시할 칭찬 점수 내역이 없습니다.</p>
                   )
                 ) : warningRows.length ? (
                   warningRows.map((w: any) => (

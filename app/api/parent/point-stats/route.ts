@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
-import { PRAISE_CATEGORIES, type PointKind } from "@/lib/warnings/categories";
+import type { PointKind } from "@/lib/warnings/categories";
 
 export const runtime = "nodejs";
 
@@ -31,13 +31,12 @@ export async function GET(req: Request) {
   if (ids.length) {
     const { data, error } = await supabase
       .from("warning_entries")
-      .select("student_id,month,delta,category")
+      .select("student_id,month,delta,kind")
       .in("student_id", ids)
       .eq("academic_year", year)
       .eq("semester", semester);
     if (error) return NextResponse.json({ error: "통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
-    const praiseCategories: readonly string[] = PRAISE_CATEGORIES;
-    entries = (data || []).filter((entry: any) => (kind === "praise" ? praiseCategories.includes(entry.category) : !praiseCategories.includes(entry.category)));
+    entries = (data || []).filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"));
   }
 
   const summaries = summarizeWarningsForStudents(entries, ids);

@@ -134,6 +134,13 @@ h3 {
   color: var(--teal-800);
   border: 1px solid rgba(136, 200, 192, 0.38);
 }
+.class-period-pill {
+  gap: 8px;
+}
+.class-period-pill button {
+  padding: 3px 9px;
+  font-size: 11px;
+}
 .inverted {
   background: rgba(255, 255, 255, 0.16);
   color: var(--white);
