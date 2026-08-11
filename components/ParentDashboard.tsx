@@ -52,6 +52,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [warningRows, setWarningRows] = useState<any[]>([]);
   const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
+  const [statusTab, setStatusTab] = useState<"attendance" | "warning">("attendance");
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -287,14 +288,54 @@ export default function ParentDashboard({ userId }: { userId: string }) {
 
         <main className="parent-main-column">
           <section className="content-card parent-warning-card">
-            <div className="section-heading">
+            <div className="section-heading parent-notice-heading">
               <div>
-                <p className="eyebrow">PENALTY STATUS</p>
-                <h2>벌점 현황</h2>
+                <p className="eyebrow">{statusTab === "attendance" ? "ATTENDANCE STATUS" : "PENALTY STATUS"}</p>
+                <h2>{statusTab === "attendance" ? "출석 현황" : "벌점 현황"}</h2>
+              </div>
+              <div className="filter-row" role="tablist" aria-label="현황 전환">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={statusTab === "attendance"}
+                  className={statusTab === "attendance" ? "filter active" : "filter"}
+                  onClick={() => setStatusTab("attendance")}
+                >
+                  출석 현황
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={statusTab === "warning"}
+                  className={statusTab === "warning" ? "filter active" : "filter"}
+                  onClick={() => setStatusTab("warning")}
+                >
+                  벌점 현황
+                </button>
               </div>
             </div>
             <div className="sent-list">
-              {warningRows.length ? (
+              {statusTab === "attendance" ? (
+                attendanceRows.length ? (
+                  attendanceRows.map((a: any) => (
+                    <article
+                      className="sent-card"
+                      key={a.id || `${a.student_id}-${a.created_at}`}
+                    >
+                      <span className="tag attendance">
+                        {ATTENDANCE_STATUS_LABELS[a.new_status as keyof typeof ATTENDANCE_STATUS_LABELS] || a.new_status}
+                      </span>
+                      <h3>{a.attendance_date}</h3>
+                      <p>{new Date(a.created_at).toLocaleString("ko-KR")}</p>
+                      {a.parent_visible_reason && (
+                        <p className="sent-preview">{a.parent_visible_reason}</p>
+                      )}
+                    </article>
+                  ))
+                ) : (
+                  <p className="muted">표시할 출석 내역이 없습니다.</p>
+                )
+              ) : warningRows.length ? (
                 warningRows.map((w: any) => (
                   <article
                     className="sent-card"
@@ -314,36 +355,6 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                 ))
               ) : (
                 <p className="muted">표시할 벌점 내역이 없습니다.</p>
-              )}
-            </div>
-          </section>
-
-          <section className="content-card parent-warning-card">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">ATTENDANCE STATUS</p>
-                <h2>출석 현황</h2>
-              </div>
-            </div>
-            <div className="sent-list">
-              {attendanceRows.length ? (
-                attendanceRows.map((a: any) => (
-                  <article
-                    className="sent-card"
-                    key={a.id || `${a.student_id}-${a.created_at}`}
-                  >
-                    <span className="tag attendance">
-                      {ATTENDANCE_STATUS_LABELS[a.new_status as keyof typeof ATTENDANCE_STATUS_LABELS] || a.new_status}
-                    </span>
-                    <h3>{a.attendance_date}</h3>
-                    <p>{new Date(a.created_at).toLocaleString("ko-KR")}</p>
-                    {a.parent_visible_reason && (
-                      <p className="sent-preview">{a.parent_visible_reason}</p>
-                    )}
-                  </article>
-                ))
-              ) : (
-                <p className="muted">표시할 출석 내역이 없습니다.</p>
               )}
             </div>
           </section>
