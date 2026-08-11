@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
+import { countElapsedWeekdays } from "@/lib/attendance/schoolDays";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,11 @@ export async function GET(req: Request) {
   }
 
   const summaries = summarizeAttendanceForStudents(entries, ids);
-  const rows = students.map((s: any) => ({ id: s.id, name: s.name, grade: s.grade, homeroom: s.homeroom, ...summaries[s.id] }));
+  const elapsedWeekdays = countElapsedWeekdays(year, (semester === 2 ? 2 : 1) as 1 | 2);
+  const rows = students.map((s: any) => {
+    const summary = summaries[s.id];
+    return { id: s.id, name: s.name, grade: s.grade, homeroom: s.homeroom, presentEstimate: Math.max(0, elapsedWeekdays - (summary?.semesterTotal || 0)), ...summary };
+  });
 
   return NextResponse.json({ students: rows });
 }
