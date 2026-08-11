@@ -10,7 +10,7 @@ export default function LoginPage() {
           <br />
           기독학교 포털
         </h2>
-        <p>가정통신문, 학교 공지, 개별 경고 공지, 등</p>
+        <p>가정통신문, 학교 공지, 개별 벌점 공지, 등</p>
       </div>
       <LoginForm />
     </main>

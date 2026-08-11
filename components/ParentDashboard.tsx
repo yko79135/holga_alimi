@@ -6,6 +6,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/types";
+import { noticeTypeLabel } from "@/lib/notices";
 
 type Student = {
   id: string;
@@ -25,6 +26,7 @@ type Notice = {
   type: string;
   title: string;
   body: string;
+  custom_type_label: string | null;
   target_scope: string;
   target_grade: string | null;
   requires_confirmation: boolean;
@@ -35,15 +37,6 @@ type Notice = {
   }>;
   acknowledgements?: Ack[];
   notice_attachments?: Attachment[];
-};
-
-const typeLabels: Record<string, string> = {
-  newsletter: "가정통신문",
-  warning: "학생 경고",
-  guidance: "생활지도",
-  consultation: "상담 안내",
-  urgent: "긴급 공지",
-  attendance: "출결 안내",
 };
 
 export default function ParentDashboard({ userId }: { userId: string }) {
@@ -296,8 +289,8 @@ export default function ParentDashboard({ userId }: { userId: string }) {
           <section className="content-card parent-warning-card">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">WARNING STATUS</p>
-                <h2>경고 현황</h2>
+                <p className="eyebrow">PENALTY STATUS</p>
+                <h2>벌점 현황</h2>
               </div>
             </div>
             <div className="sent-list">
@@ -307,7 +300,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                     className="sent-card"
                     key={w.id || `${w.student_id}-${w.created_at}`}
                   >
-                    <span className="tag warning">경고</span>
+                    <span className="tag warning">벌점</span>
                     <h3>
                       {w.entry_type === "grace_adjustment"
                         ? "은혜의 희월"
@@ -320,7 +313,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                   </article>
                 ))
               ) : (
-                <p className="muted">표시할 경고 내역이 없습니다.</p>
+                <p className="muted">표시할 벌점 내역이 없습니다.</p>
               )}
             </div>
           </section>
@@ -395,11 +388,13 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                           ? "!"
                           : notice.type === "urgent"
                             ? "⚑"
-                            : "✉"}
+                            : notice.type === "praise"
+                              ? "🎉"
+                              : "✉"}
                       </span>
                       <span className="notice-main">
                         <span className="notice-meta">
-                          <b>{typeLabels[notice.type] || notice.type}</b> ·{" "}
+                          <b>{noticeTypeLabel(notice)}</b> ·{" "}
                           {recipientText(notice)}
                         </span>
                         <strong>{notice.title}</strong>
@@ -452,7 +447,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
               ×
             </button>
             <span className={`tag ${selected.type}`}>
-              {typeLabels[selected.type] || selected.type}
+              {noticeTypeLabel(selected)}
             </span>
             <h2 id="parent-notice-title">{selected.title}</h2>
             <p className="modal-meta">

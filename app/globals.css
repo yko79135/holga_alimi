@@ -454,6 +454,16 @@ h3 {
   background: var(--blue-100);
   color: var(--teal-700);
 }
+.notice-icon.praise,
+.tag.praise {
+  background: #fff8e1;
+  color: #a6790a;
+}
+.notice-icon.custom,
+.tag.custom {
+  background: var(--sand-100);
+  color: var(--muted);
+}
 .notice-main {
   display: grid;
   gap: 4px;
