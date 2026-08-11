@@ -2,17 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { ATTENDANCE_EXCEPTION_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceExceptionStatus } from "@/lib/attendance/types";
-import type { MonthlyAttendanceBreakdown } from "@/lib/attendance/stats";
 
 type StatsStudent = {
   id: string;
   name: string;
   grade: string;
   homeroom: string | null;
-  semesterCounts: Record<AttendanceExceptionStatus, number>;
-  semesterTotal: number;
-  monthly: MonthlyAttendanceBreakdown[];
+  presentEstimate: number;
+  semesterCounts: { late: number; absent: number; early_leave: number; sick_leave: number };
 };
 
 const now = new Date();
@@ -23,7 +20,6 @@ export default function ParentAttendanceStats() {
   const [rows, setRows] = useState<StatsStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,17 +39,14 @@ export default function ParentAttendanceStats() {
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh({ channelName: "parent-attendance-stats", tables: [{ table: "attendance_entries" }], onRefresh: () => { void load(); } });
 
-  const totalExceptions = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
-
   return (
     <section className="content-card">
       <div className="section-heading">
         <div>
           <p className="eyebrow">ATTENDANCE STATS</p>
           <h2>출석 통계</h2>
-          <p className="muted">자녀별 학기 출결 예외 내역을 확인할 수 있습니다.</p>
+          <p className="muted">자녀의 이번 학기 출결 현황을 한눈에 볼 수 있습니다.</p>
         </div>
-        <span className="pill">학기 예외 합계 {totalExceptions}건</span>
       </div>
 
       <div className="warning-toolbar">
@@ -64,45 +57,18 @@ export default function ParentAttendanceStats() {
       {err && <p className="form-error">{err}</p>}
       {loading && <p className="muted">불러오는 중...</p>}
 
-      <div className="account-list">
-        {rows.map((row) => {
-          const isOpen = expandedId === row.id;
-          return (
-            <article className="account-card" key={row.id}>
-              <div className="account-meta">
-                <strong>{row.name}</strong>
-                <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span>
-                <span className="pill">학기 합계 {row.semesterTotal}건</span>
-              </div>
-              <div className="account-meta">
-                {ATTENDANCE_EXCEPTION_STATUSES.map((status) => (
-                  <span className="pill" key={status}>{ATTENDANCE_STATUS_LABELS[status]} {row.semesterCounts[status]}</span>
-                ))}
-              </div>
-              <div className="account-actions">
-                <button type="button" className="secondary" onClick={() => setExpandedId(isOpen ? null : row.id)}>
-                  {isOpen ? "닫기" : "월별 보기"}
-                </button>
-              </div>
-              {isOpen && (
-                row.monthly.length ? (
-                  <dl className="reset-target-details">
-                    {row.monthly.map((entry) => (
-                      <div key={entry.month}>
-                        <dt>{entry.month}월</dt>
-                        <dd>{ATTENDANCE_EXCEPTION_STATUSES.map((status) => `${ATTENDANCE_STATUS_LABELS[status]} ${entry.counts[status]}`).join(" · ")} (합계 {entry.total})</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : (
-                  <p className="muted">이번 학기 출결 예외 기록이 없습니다.</p>
-                )
-              )}
-            </article>
-          );
-        })}
-        {!rows.length && !loading && <p className="muted">연결된 학생이 없습니다.</p>}
-      </div>
+      {rows.map((row) => (
+        <div key={row.id} className="parent-stat-block">
+          <h3>{row.name} <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span></h3>
+          <div className="stats-row">
+            <div className="stat-card"><span>출석</span><strong>{row.presentEstimate}</strong></div>
+            <div className="stat-card"><span>지각</span><strong>{row.semesterCounts?.late ?? 0}</strong></div>
+            <div className="stat-card"><span>결석</span><strong>{row.semesterCounts?.absent ?? 0}</strong></div>
+            <div className="stat-card"><span>병결</span><strong>{row.semesterCounts?.sick_leave ?? 0}</strong></div>
+          </div>
+        </div>
+      ))}
+      {!rows.length && !loading && <p className="muted">연결된 학생이 없습니다.</p>}
     </section>
   );
 }

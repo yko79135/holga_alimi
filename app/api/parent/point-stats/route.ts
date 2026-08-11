@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
-import type { PointKind } from "@/lib/warnings/categories";
 
 export const runtime = "nodejs";
 
@@ -16,7 +15,6 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const year = Number(url.searchParams.get("year") || new Date().getFullYear());
   const semester = Number(url.searchParams.get("semester") || 1);
-  const kind: PointKind = url.searchParams.get("kind") === "praise" ? "praise" : "discipline";
 
   const { data: links, error: linksError } = await supabase
     .from("parent_students")
@@ -27,7 +25,8 @@ export async function GET(req: Request) {
   const students = (links || []).flatMap((row: any) => (Array.isArray(row.students) ? row.students : row.students ? [row.students] : []));
   const ids = students.map((s: any) => s.id);
 
-  let entries: any[] = [];
+  let disciplineEntries: any[] = [];
+  let praiseEntries: any[] = [];
   if (ids.length) {
     const { data, error } = await supabase
       .from("warning_entries")
@@ -36,11 +35,20 @@ export async function GET(req: Request) {
       .eq("academic_year", year)
       .eq("semester", semester);
     if (error) return NextResponse.json({ error: "통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
-    entries = (data || []).filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"));
+    disciplineEntries = (data || []).filter((entry: any) => entry.kind !== "praise");
+    praiseEntries = (data || []).filter((entry: any) => entry.kind === "praise");
   }
 
-  const summaries = summarizeWarningsForStudents(entries, ids);
-  const rows = students.map((s: any) => ({ id: s.id, name: s.name, grade: s.grade, homeroom: s.homeroom, ...summaries[s.id] }));
+  const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
+  const praiseSummaries = summarizeWarningsForStudents(praiseEntries, ids);
+  const rows = students.map((s: any) => ({
+    id: s.id,
+    name: s.name,
+    grade: s.grade,
+    homeroom: s.homeroom,
+    discipline: disciplineSummaries[s.id],
+    praise: praiseSummaries[s.id],
+  }));
 
   return NextResponse.json({ students: rows });
 }

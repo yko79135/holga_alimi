@@ -587,6 +587,12 @@ h3 {
   color: var(--white);
   border-color: var(--teal-800);
 }
+.parent-stat-block {
+  margin-bottom: 22px;
+}
+.parent-stat-block .stats-row.two {
+  grid-template-columns: repeat(2, 1fr);
+}
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
