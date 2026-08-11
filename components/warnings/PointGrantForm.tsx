@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { categoriesForKind, isValidPointValue, DEFAULT_POINT_VALUE, MAX_POINT_VALUE, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
+import { categoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_POINT_VALUE, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
 
 type Student = { id: string; name: string; grade: string; active?: boolean };
 type ClassPeriod = { id: string; name: string; active: boolean };
@@ -20,6 +20,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const [grade, setGrade] = useState("");
   const [studentId, setStudentId] = useState("");
   const [category, setCategory] = useState("");
+  const [customCategoryLabel, setCustomCategoryLabel] = useState("");
   const [classPeriodId, setClassPeriodId] = useState("");
   const [points, setPoints] = useState(String(DEFAULT_POINT_VALUE));
   const [detail, setDetail] = useState("");
@@ -50,9 +51,11 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
 
   const pointsValue = Number(points);
   const pointsValid = isValidPointValue(pointsValue);
+  const isCustomCategory = category === CUSTOM_CATEGORY;
+  const customCategoryValid = !isCustomCategory || customCategoryLabel.trim().length > 0;
 
   async function submit() {
-    if (!studentId || !category || !classPeriodId || !pointsValid || pending) return;
+    if (!studentId || !category || !classPeriodId || !pointsValid || !customCategoryValid || pending) return;
     setPending(true);
     setErr("");
     setMsg("");
@@ -60,12 +63,13 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       const response = await fetch("/api/warnings/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, studentId, category, classPeriodId, points: pointsValue, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ kind, studentId, category, customCategoryLabel: isCustomCategory ? customCategoryLabel.trim() : undefined, classPeriodId, points: pointsValue, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "저장하지 못했습니다. 다시 시도해 주세요.");
       setMsg(result.message || `${meta.successVerb} 저장되었습니다.`);
       setCategory("");
+      setCustomCategoryLabel("");
       setClassPeriodId("");
       setPoints(String(DEFAULT_POINT_VALUE));
       setDetail("");
@@ -158,6 +162,11 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
               {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
+          {isCustomCategory && (
+            <label>직접 입력 사유
+              <input value={customCategoryLabel} onChange={(e) => setCustomCategoryLabel(e.target.value)} placeholder="학부모에게 전달될 사유를 입력해 주세요." />
+            </label>
+          )}
           <label>수업
             <select value={classPeriodId} onChange={(e) => setClassPeriodId(e.target.value)}>
               <option value="">수업 선택</option>
@@ -175,11 +184,12 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       </div>
 
       {!pointsValid && points !== "" && <p className="form-error">점수는 1~{MAX_POINT_VALUE} 사이의 정수로 입력해 주세요.</p>}
+      {isCustomCategory && !customCategoryValid && <p className="form-error">직접 입력한 사유를 작성해 주세요.</p>}
       {err && <p className="form-error">{err}</p>}
       {msg && <p className="success-message">{msg}</p>}
 
       <div className="warning-actions">
-        <button className="primary" onClick={submit} disabled={!studentId || !category || !classPeriodId || !pointsValid || pending}>
+        <button className="primary" onClick={submit} disabled={!studentId || !category || !classPeriodId || !pointsValid || !customCategoryValid || pending}>
           {pending ? "전송 중..." : "전송"}
         </button>
       </div>

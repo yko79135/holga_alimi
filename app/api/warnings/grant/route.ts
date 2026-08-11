@@ -4,7 +4,7 @@ import { sendNoticePushes } from "@/lib/push/send";
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { changeType, buildPointNotice } from "@/lib/warnings/format";
-import { DEFAULT_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
+import { CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -61,14 +61,21 @@ export async function POST(req: Request) {
   const detail = String(body.detail || "").trim();
   const points = body.points === undefined || body.points === null || body.points === "" ? DEFAULT_POINT_VALUE : Number(body.points);
   const idempotencyKey = String(body.idempotencyKey || "").trim();
+  const isCustomCategory = category === CUSTOM_CATEGORY;
+  const customCategoryLabel = isCustomCategory ? String(body.customCategoryLabel || "").trim() : "";
   const baseDiagnostic = { requestId, userId: user.id, role, kind: kind || undefined, studentId };
 
   if (!kind || !studentId || !classPeriodId || !idempotencyKey || !isValidCategory(kind as PointKind, category)) {
     return NextResponse.json({ error: "학생, 카테고리, 수업을 모두 선택해 주세요." }, { status: 400 });
   }
+  if (isCustomCategory && !customCategoryLabel) {
+    return NextResponse.json({ error: "직접 입력한 사유를 작성해 주세요." }, { status: 400 });
+  }
   if (!isValidPointValue(points)) {
     return NextResponse.json({ error: "점수는 1 이상의 정수로 입력해 주세요." }, { status: 400 });
   }
+
+  const reasonLabel = isCustomCategory ? customCategoryLabel : category;
 
   const studentRes = await supabase.from("students").select("id,name").eq("id", studentId).single();
   if (studentRes.error || !studentRes.data) return NextResponse.json({ error: "학생 정보를 확인할 수 없습니다." }, { status: 400 });
@@ -87,7 +94,7 @@ export async function POST(req: Request) {
   if (batchRes.error || !batchRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_change_batches", errorCode: batchRes.error?.code, errorMessage: batchRes.error?.message });
   const batchId = batchRes.data.id;
 
-  const parentVisibleReason = detail ? `${category} - ${detail}` : category;
+  const parentVisibleReason = detail ? `${reasonLabel} - ${detail}` : reasonLabel;
   const entryRes = await supabase
     .from("warning_entries")
     .insert({
@@ -103,6 +110,7 @@ export async function POST(req: Request) {
       new_value: points,
       delta,
       category,
+      custom_category_label: isCustomCategory ? customCategoryLabel : null,
       kind,
       class_period_id: classPeriodId,
       parent_visible_reason: parentVisibleReason,
@@ -123,7 +131,7 @@ export async function POST(req: Request) {
     .filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"))
     .reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
 
-  const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category, className: classRes.data.name, detail, points, monthlyTotal });
+  const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category: reasonLabel, className: classRes.data.name, detail, points, monthlyTotal });
   const noticeRes = await supabase
     .from("notices")
     .insert({
