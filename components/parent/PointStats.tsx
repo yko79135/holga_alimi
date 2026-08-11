@@ -17,7 +17,7 @@ type StatsStudent = {
 const now = new Date();
 const KIND_META: Record<PointKind, { eyebrow: string; title: string; unit: string; description: string; empty: string }> = {
   discipline: { eyebrow: "DISCIPLINE STATS", title: "훈계 통계", unit: "점", description: "자녀별 학기 훈계 점수 합계를 확인할 수 있습니다.", empty: "이번 학기 훈계 점수 기록이 없습니다." },
-  praise: { eyebrow: "STICKER STATS", title: "스티커 통계", unit: "점", description: "자녀별 학기 칭찬 점수(스티커) 합계를 확인할 수 있습니다.", empty: "이번 학기 칭찬 점수 기록이 없습니다." },
+  praise: { eyebrow: "PRAISE STATS", title: "칭찬 통계", unit: "점", description: "자녀별 학기 칭찬 점수 합계를 확인할 수 있습니다.", empty: "이번 학기 칭찬 점수 기록이 없습니다." },
 };
 
 export default function ParentPointStats({ kind }: { kind: PointKind }) {

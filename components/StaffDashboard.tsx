@@ -347,14 +347,13 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       <nav className="staff-tabs">
         <button className={tab === "compose" ? "active" : ""} onClick={() => onTabChange("compose")}>알림 작성</button>
         <button className={tab === "notices" ? "active" : ""} onClick={() => onTabChange("notices")}>발송 기록</button>
-        <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>
+        {role === "admin" && <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>}
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
-        <button className={tab === "warnings" ? "active" : ""} onClick={() => onTabChange("warnings")}>훈계 정정</button>
+        <button className={tab === "warnings" ? "active" : ""} onClick={() => onTabChange("warnings")}>정정</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
-        <button className={tab === "discipline-stats" ? "active" : ""} onClick={() => onTabChange("discipline-stats")}>훈계 통계</button>
-        <button className={tab === "praise-stats" ? "active" : ""} onClick={() => onTabChange("praise-stats")}>스티커 통계</button>
+        <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
       </nav>
 
@@ -440,9 +439,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
       {tab === "attendance-stats" && <AttendanceStats role={role} />}
 
-      {tab === "discipline-stats" && <PointStats role={role} kind="discipline" />}
-
-      {tab === "praise-stats" && <PointStats role={role} kind="praise" />}
+      {tab === "point-stats" && <PointStats role={role} />}
 
       {tab === "students" && (
         <section className="student-management-layout">

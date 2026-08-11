@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
-import { PRAISE_CATEGORIES, type PointKind } from "@/lib/warnings/categories";
 
 export const runtime = "nodejs";
 
@@ -24,7 +23,6 @@ export async function GET(req: Request) {
   const semester = Number(url.searchParams.get("semester") || 1);
   const grade = url.searchParams.get("grade") || "";
   const studentName = url.searchParams.get("student") || "";
-  const kind: PointKind = url.searchParams.get("kind") === "praise" ? "praise" : "discipline";
 
   let studentQuery = a.supabase.from("students").select("id,name,grade,homeroom,active,parent_students(parent_id)").eq("active", true).order("grade").order("name");
   if (grade) studentQuery = studentQuery.eq("grade", grade);
@@ -33,22 +31,25 @@ export async function GET(req: Request) {
   if (studentsError) return NextResponse.json({ error: "통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
 
   const ids = (students || []).map((s: any) => s.id);
-  let entries: any[] = [];
+  let disciplineEntries: any[] = [];
+  let praiseEntries: any[] = [];
   if (ids.length) {
-    const { data, error } = await a.supabase.from("warning_entries").select("student_id,month,delta,category").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
+    const { data, error } = await a.supabase.from("warning_entries").select("student_id,month,delta,kind").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const praiseCategories: readonly string[] = PRAISE_CATEGORIES;
-    entries = (data || []).filter((entry: any) => (kind === "praise" ? praiseCategories.includes(entry.category) : !praiseCategories.includes(entry.category)));
+    disciplineEntries = (data || []).filter((entry: any) => entry.kind !== "praise");
+    praiseEntries = (data || []).filter((entry: any) => entry.kind === "praise");
   }
 
-  const summaries = summarizeWarningsForStudents(entries, ids);
+  const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
+  const praiseSummaries = summarizeWarningsForStudents(praiseEntries, ids);
   const rows = (students || []).map((student: any) => ({
     id: student.id,
     name: student.name,
     grade: student.grade,
     homeroom: student.homeroom,
     parentCount: Array.isArray(student.parent_students) ? student.parent_students.length : 0,
-    ...summaries[student.id],
+    discipline: disciplineSummaries[student.id],
+    praise: praiseSummaries[student.id],
   }));
 
   return NextResponse.json({ students: rows, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });

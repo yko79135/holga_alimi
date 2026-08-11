@@ -33,8 +33,11 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
     try {
       const response = await fetch("/api/admin/class-periods", { cache: "no-store" });
       const result = await response.json();
-      if (response.ok) setClassPeriods(result.classPeriods || []);
-    } catch { /* live refresh will retry */ }
+      if (!response.ok) throw new Error(result.error || "수업 목록을 불러오지 못했습니다.");
+      setClassPeriods(result.classPeriods || []);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "수업 목록을 불러오지 못했습니다.");
+    }
   }, []);
 
   useEffect(() => { void loadClassPeriods(); }, [loadClassPeriods]);
@@ -115,52 +118,53 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         <div className="warning-toolbar">
           <label>수업 관리<input value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="새 수업 이름" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addClassPeriod(); } }} /></label>
           <button type="button" className="secondary" onClick={addClassPeriod} disabled={!newClassName.trim() || classPending}>추가</button>
-          <div className="account-meta">
-            {classPeriods.map((c) => (
-              <span className="pill" key={c.id}>
-                {c.name}{!c.active ? " (비활성)" : ""}
-                <button type="button" className="secondary" style={{ marginLeft: 6 }} onClick={() => toggleClassPeriod(c)} disabled={classPending}>
-                  {c.active ? "비활성화" : "활성화"}
-                </button>
-              </span>
-            ))}
-          </div>
+          {!!classPeriods.length && (
+            <div className="account-meta">
+              {classPeriods.map((c) => (
+                <span className="pill class-period-pill" key={c.id}>
+                  {c.name}{!c.active ? " (비활성)" : ""}
+                  <button type="button" className="secondary" onClick={() => toggleClassPeriod(c)} disabled={classPending}>
+                    {c.active ? "비활성화" : "활성화"}
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="two-columns">
-        <div>
-          <label>학년</label>
-          <select value={grade} onChange={(e) => { setGrade(e.target.value); setStudentId(""); }}>
-            <option value="">전체 학년</option>
-            {grades.map((g) => <option key={g}>{g}</option>)}
-          </select>
+      <div className="form-panel">
+        <div className="two-columns">
+          <label>학년
+            <select value={grade} onChange={(e) => { setGrade(e.target.value); setStudentId(""); }}>
+              <option value="">전체 학년</option>
+              {grades.map((g) => <option key={g}>{g}</option>)}
+            </select>
+          </label>
+          <label>학생
+            <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+              <option value="">학생 선택</option>
+              {visibleStudents.map((s) => <option key={s.id} value={s.id}>{s.grade} · {s.name}</option>)}
+            </select>
+          </label>
+          <label>{meta.categoryLabel}
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">카테고리 선택</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label>수업
+            <select value={classPeriodId} onChange={(e) => setClassPeriodId(e.target.value)}>
+              <option value="">수업 선택</option>
+              {selectableClasses.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.active ? " (비활성)" : ""}</option>)}
+            </select>
+          </label>
         </div>
-        <div>
-          <label>학생</label>
-          <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-            <option value="">학생 선택</option>
-            {visibleStudents.map((s) => <option key={s.id} value={s.id}>{s.grade} · {s.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>{meta.categoryLabel}</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">카테고리 선택</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>수업</label>
-          <select value={classPeriodId} onChange={(e) => setClassPeriodId(e.target.value)}>
-            <option value="">수업 선택</option>
-            {selectableClasses.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.active ? " (비활성)" : ""}</option>)}
-          </select>
-        </div>
-      </div>
 
-      <label>세부사항 (선택)</label>
-      <textarea value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="필요한 경우 구체적인 상황을 적어주세요." />
+        <label>세부사항 (선택)
+          <textarea value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="필요한 경우 구체적인 상황을 적어주세요." />
+        </label>
+      </div>
 
       {err && <p className="form-error">{err}</p>}
       {msg && <p className="success-message">{msg}</p>}
