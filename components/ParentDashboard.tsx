@@ -79,7 +79,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     } catch (error) {
       if ((error as Error).name !== "AbortError") setMessage("변경사항을 불러오지 못했습니다. 다시 시도해 주세요.");
     } finally {
-      if (requestId === requestIdRef.current && initial) setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [userId]);
 
