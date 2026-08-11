@@ -25,7 +25,12 @@ export const PRAISE_CATEGORIES = [
 ] as const;
 
 export const POINT_KIND_LABELS: Record<PointKind, string> = { discipline: "훈계 점수", praise: "칭찬 점수" };
-export const POINT_VALUE = 1;
+export const DEFAULT_POINT_VALUE = 1;
+export const MAX_POINT_VALUE = 20;
+
+export function isValidPointValue(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_POINT_VALUE;
+}
 
 export function categoriesForKind(kind: PointKind): readonly string[] {
   return kind === "discipline" ? DISCIPLINE_CATEGORIES : PRAISE_CATEGORIES;
