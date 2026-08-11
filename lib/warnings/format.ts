@@ -29,8 +29,8 @@ export function buildWarningNotice(studentName: string, changes: WarningCellChan
   return { title, body: lines.join("\n") };
 }
 
-export function buildPointNotice(params: { kind: PointKind; studentName: string; category: string; className: string | null; detail: string; monthlyTotal: number }) {
-  const { kind, studentName, category, className, detail, monthlyTotal } = params;
+export function buildPointNotice(params: { kind: PointKind; studentName: string; category: string; className: string | null; detail: string; points: number; monthlyTotal: number }) {
+  const { kind, studentName, category, className, detail, points, monthlyTotal } = params;
   const isPraise = kind === "praise";
   const title = isPraise ? "칭찬 점수 안내" : "훈계 점수 안내";
   const lines = [
@@ -41,6 +41,7 @@ export function buildPointNotice(params: { kind: PointKind; studentName: string;
     `${isPraise ? "칭찬 내용" : "사유"}: ${category}`,
   ];
   if (className) lines.push(`수업: ${className}`);
+  lines.push(`${isPraise ? "부여 점수" : "차감 점수"}: ${points}점`);
   if (detail) lines.push("", "세부 내용", detail);
   lines.push("", `이번 달 ${isPraise ? "칭찬" : "훈계"} 점수 합계: ${monthlyTotal}점`, "");
   lines.push(isPraise ? "가정에서도 함께 축하하고 격려해 주세요." : "가정에서도 따뜻한 관심과 격려 부탁드립니다.");

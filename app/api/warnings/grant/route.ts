@@ -4,7 +4,7 @@ import { sendNoticePushes } from "@/lib/push/send";
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { changeType, buildPointNotice } from "@/lib/warnings/format";
-import { POINT_VALUE, isValidCategory, type PointKind } from "@/lib/warnings/categories";
+import { DEFAULT_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -59,11 +59,15 @@ export async function POST(req: Request) {
   const category = String(body.category || "").trim();
   const classPeriodId = String(body.classPeriodId || "").trim();
   const detail = String(body.detail || "").trim();
+  const points = body.points === undefined || body.points === null || body.points === "" ? DEFAULT_POINT_VALUE : Number(body.points);
   const idempotencyKey = String(body.idempotencyKey || "").trim();
   const baseDiagnostic = { requestId, userId: user.id, role, kind: kind || undefined, studentId };
 
   if (!kind || !studentId || !classPeriodId || !idempotencyKey || !isValidCategory(kind as PointKind, category)) {
     return NextResponse.json({ error: "학생, 카테고리, 수업을 모두 선택해 주세요." }, { status: 400 });
+  }
+  if (!isValidPointValue(points)) {
+    return NextResponse.json({ error: "점수는 1 이상의 정수로 입력해 주세요." }, { status: 400 });
   }
 
   const studentRes = await supabase.from("students").select("id,name").eq("id", studentId).single();
@@ -77,7 +81,7 @@ export async function POST(req: Request) {
   if (existing.data) return NextResponse.json({ success: true, idempotent: true, message: "이미 처리된 요청입니다.", batchId: existing.data.id });
 
   const { year, semester, month, dateOnly } = currentTerm();
-  const delta = kind === "discipline" ? -POINT_VALUE : POINT_VALUE;
+  const delta = kind === "discipline" ? -points : points;
 
   const batchRes = await supabase.from("warning_change_batches").insert({ idempotency_key: idempotencyKey, academic_year: year, semester, month, author_id: user.id }).select("id").single();
   if (batchRes.error || !batchRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_change_batches", errorCode: batchRes.error?.code, errorMessage: batchRes.error?.message });
@@ -96,7 +100,7 @@ export async function POST(req: Request) {
       entry_type: "daily",
       change_type: changeType(delta, "daily"),
       previous_value: 0,
-      new_value: POINT_VALUE,
+      new_value: points,
       delta,
       category,
       kind,
@@ -119,7 +123,7 @@ export async function POST(req: Request) {
     .filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"))
     .reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
 
-  const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category, className: classRes.data.name, detail, monthlyTotal });
+  const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category, className: classRes.data.name, detail, points, monthlyTotal });
   const noticeRes = await supabase
     .from("notices")
     .insert({

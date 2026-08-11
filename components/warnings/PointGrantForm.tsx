@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { categoriesForKind, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
+import { categoriesForKind, isValidPointValue, DEFAULT_POINT_VALUE, MAX_POINT_VALUE, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
 
 type Student = { id: string; name: string; grade: string; active?: boolean };
 type ClassPeriod = { id: string; name: string; active: boolean };
@@ -21,6 +21,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const [studentId, setStudentId] = useState("");
   const [category, setCategory] = useState("");
   const [classPeriodId, setClassPeriodId] = useState("");
+  const [points, setPoints] = useState(String(DEFAULT_POINT_VALUE));
   const [detail, setDetail] = useState("");
   const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>([]);
   const [newClassName, setNewClassName] = useState("");
@@ -47,8 +48,11 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const visibleStudents = useMemo(() => (grade ? activeStudents.filter((s) => s.grade === grade) : activeStudents), [activeStudents, grade]);
   const selectableClasses = role === "admin" ? classPeriods : classPeriods.filter((c) => c.active);
 
+  const pointsValue = Number(points);
+  const pointsValid = isValidPointValue(pointsValue);
+
   async function submit() {
-    if (!studentId || !category || !classPeriodId || pending) return;
+    if (!studentId || !category || !classPeriodId || !pointsValid || pending) return;
     setPending(true);
     setErr("");
     setMsg("");
@@ -56,13 +60,14 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       const response = await fetch("/api/warnings/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, studentId, category, classPeriodId, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ kind, studentId, category, classPeriodId, points: pointsValue, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "저장하지 못했습니다. 다시 시도해 주세요.");
       setMsg(result.message || `${meta.successVerb} 저장되었습니다.`);
       setCategory("");
       setClassPeriodId("");
+      setPoints(String(DEFAULT_POINT_VALUE));
       setDetail("");
     } catch (error) {
       setErr(error instanceof Error ? error.message : "저장하지 못했습니다. 다시 시도해 주세요.");
@@ -159,6 +164,9 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
               {selectableClasses.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.active ? " (비활성)" : ""}</option>)}
             </select>
           </label>
+          <label>점수
+            <input type="number" min={1} max={MAX_POINT_VALUE} step={1} value={points} onChange={(e) => setPoints(e.target.value)} />
+          </label>
         </div>
 
         <label>세부사항 (선택)
@@ -166,11 +174,12 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         </label>
       </div>
 
+      {!pointsValid && points !== "" && <p className="form-error">점수는 1~{MAX_POINT_VALUE} 사이의 정수로 입력해 주세요.</p>}
       {err && <p className="form-error">{err}</p>}
       {msg && <p className="success-message">{msg}</p>}
 
       <div className="warning-actions">
-        <button className="primary" onClick={submit} disabled={!studentId || !category || !classPeriodId || pending}>
+        <button className="primary" onClick={submit} disabled={!studentId || !category || !classPeriodId || !pointsValid || pending}>
           {pending ? "전송 중..." : "전송"}
         </button>
       </div>
