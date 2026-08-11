@@ -22,7 +22,10 @@ export async function findMatchingStudents(studentName: string, studentGrade: st
   const normalizedGrade = normalizeMatchText(studentGrade);
   if (!normalizedName || !normalizedGrade) return [];
 
-  const { data } = await admin.from("students").select("id,name,grade,homeroom").eq("active", true);
+  const { data, error } = await admin.from("students").select("id,name,grade,homeroom").eq("active", true);
+  // Surface a failed lookup instead of silently returning "no matches" -- treating a query
+  // failure as "definitely no existing student" would make the caller create a duplicate.
+  if (error) throw new Error(`STUDENT_LOOKUP_FAILED: ${error.message}`);
   return (data || []).filter((student) => normalizeMatchText(student.name) === normalizedName && normalizeMatchText(student.grade) === normalizedGrade);
 }
 

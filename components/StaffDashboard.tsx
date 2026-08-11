@@ -46,6 +46,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentGrade, setStudentGrade] = useState("");
   const [studentParentId, setStudentParentId] = useState("");
   const [parentLinks, setParentLinks] = useState<Record<string, ParentLink[]>>({});
+  const [parentRoleIds, setParentRoleIds] = useState<Set<string>>(new Set());
   const [parentSearch, setParentSearch] = useState<Record<string, string>>({});
   const [expandedLinkPanel, setExpandedLinkPanel] = useState<Record<string, boolean>>({});
   const [linkingStudentId, setLinkingStudentId] = useState<string | null>(null);
@@ -95,14 +96,25 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     setParentLinks(grouped);
   }, [role]);
 
+  // profiles.role is a legacy single-role column: for a multi-role account (e.g. teacher +
+  // parent), it holds whichever role sorts first in APP_ROLES, never "parent" if the account is
+  // also a teacher or admin. Filtering the parent-search list by that column alone silently hid
+  // any teacher+parent account from student linking. profile_roles is the real multi-role source.
+  const loadParentRoleIds = useCallback(async () => {
+    if (role !== "admin") return;
+    const supabase = createClient();
+    const { data } = await supabase.from("profile_roles").select("profile_id").eq("role", "parent");
+    setParentRoleIds(new Set((data || []).map((row: any) => row.profile_id)));
+  }, [role]);
+
   const load = useCallback(async () => {
-    await Promise.all([loadStudents(), loadNotices(), loadProfiles(), loadParentLinks()]);
-  }, [loadStudents, loadNotices, loadProfiles, loadParentLinks]);
+    await Promise.all([loadStudents(), loadNotices(), loadProfiles(), loadParentLinks(), loadParentRoleIds()]);
+  }, [loadStudents, loadNotices, loadProfiles, loadParentLinks, loadParentRoleIds]);
 
   useEffect(() => { void loadStudents(); }, [loadStudents]);
   useEffect(() => { if (tab === "compose") void loadStudents(); }, [tab, loadStudents]);
   useEffect(() => { if (tab === "notices") void loadNotices(); }, [tab, loadNotices]);
-  useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); } }, [tab, loadStudents, loadProfiles, loadParentLinks]);
+  useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); void loadParentRoleIds(); } }, [tab, loadStudents, loadProfiles, loadParentLinks, loadParentRoleIds]);
   useLiveRefresh({
     channelName: `staff-dashboard-${userId}-${role}`,
     tables: [
@@ -113,6 +125,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       { table: "students" },
       { table: "parent_students" },
       { table: "profiles" },
+      { table: "profile_roles" },
     ],
     onRefresh: () => { void load(); },
   });
@@ -128,7 +141,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     }
   }, []);
 
-  const parentProfiles = useMemo(() => profiles.filter((profile) => profile.role === "parent"), [profiles]);
+  const parentProfiles = useMemo(() => profiles.filter((profile) => profile.role === "parent" || parentRoleIds.has(profile.id)), [profiles, parentRoleIds]);
 
   const filteredStudents = useMemo(() => {
     const term = studentSearch.trim().toLowerCase();
@@ -342,7 +355,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       <div className="stats-row">
         <div className="stat-card"><span>등록 학생</span><strong>{students.length}</strong></div>
         <div className="stat-card"><span>발송 알림</span><strong>{notices.length}</strong></div>
-        <div className="stat-card"><span>학부모 계정</span><strong>{profiles.filter((p) => p.role === "parent").length}</strong></div>
+        <div className="stat-card"><span>학부모 계정</span><strong>{parentProfiles.length}</strong></div>
         <div className="stat-card"><span>학부모 답변</span><strong>{replyTotal}</strong></div>
       </div>
 

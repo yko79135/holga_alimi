@@ -100,7 +100,10 @@ export default function SignupForm() {
         body: JSON.stringify({ token, children: children.map((child) => ({ name: child.name.trim(), grade: child.grade.trim() })) }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "학생 정보를 확인하지 못했습니다.");
+      if (!response.ok) {
+        const suffix = result.errorId ? ` (참조번호: ${result.errorId})` : "";
+        throw new Error((result.error || "학생 정보를 확인하지 못했습니다.") + suffix);
+      }
       const childResults: ChildMatchResult[] = result.results || [];
       setResults(childResults);
       const initial: Record<number, string | "new" | null> = {};
@@ -150,7 +153,10 @@ export default function SignupForm() {
           setStep("form");
           return;
         }
-        throw new Error(result.error || "계정 생성에 실패했습니다.");
+        // errorId correlates this failure with the server-side diagnostic log (signup-invite-
+        // redeem-diagnostic) -- surfaced so it can be relayed back when reporting a failure.
+        const suffix = result.errorId ? ` (참조번호: ${result.errorId})` : "";
+        throw new Error((result.error || "계정 생성에 실패했습니다.") + suffix);
       }
 
       const supabase = createClient();
