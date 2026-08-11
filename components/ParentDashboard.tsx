@@ -7,6 +7,8 @@ import { formatBytes } from "@/lib/notice-security";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/types";
 import { noticeTypeLabel } from "@/lib/notices";
+import ParentAttendanceStats from "@/components/parent/AttendanceStats";
+import ParentWarningStats from "@/components/parent/WarningStats";
 
 type Student = {
   id: string;
@@ -52,7 +54,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [warningRows, setWarningRows] = useState<any[]>([]);
   const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
-  const [statusTab, setStatusTab] = useState<"attendance" | "warning">("attendance");
+  const [tab, setTab] = useState<"notices" | "attendance" | "attendance-stats" | "warnings" | "warning-stats">("notices");
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -155,7 +157,10 @@ export default function ParentDashboard({ userId }: { userId: string }) {
     )
       return;
     const notice = notices.find((item) => item.id === id);
-    if (notice) void openNotice(notice);
+    if (notice) {
+      setTab("notices");
+      void openNotice(notice);
+    }
   }, [searchParams, notices, selected?.id]);
 
   useEffect(() => {
@@ -287,150 +292,145 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         </aside>
 
         <main className="parent-main-column">
-          <section className="content-card parent-warning-card">
-            <div className="section-heading parent-notice-heading">
-              <div>
-                <p className="eyebrow">{statusTab === "attendance" ? "ATTENDANCE STATUS" : "PENALTY STATUS"}</p>
-                <h2>{statusTab === "attendance" ? "출석 현황" : "벌점 현황"}</h2>
+          <nav className="staff-tabs">
+            <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>학교 알림</button>
+            <button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>출석 현황</button>
+            <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
+            <button className={tab === "warnings" ? "active" : ""} onClick={() => setTab("warnings")}>벌점 현황</button>
+            <button className={tab === "warning-stats" ? "active" : ""} onClick={() => setTab("warning-stats")}>벌점 통계</button>
+          </nav>
+
+          {(tab === "attendance" || tab === "warnings") && (
+            <section className="content-card parent-warning-card">
+              <div className="section-heading parent-notice-heading">
+                <div>
+                  <p className="eyebrow">{tab === "attendance" ? "ATTENDANCE STATUS" : "PENALTY STATUS"}</p>
+                  <h2>{tab === "attendance" ? "출석 현황" : "벌점 현황"}</h2>
+                </div>
               </div>
-              <div className="filter-row" role="tablist" aria-label="현황 전환">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={statusTab === "attendance"}
-                  className={statusTab === "attendance" ? "filter active" : "filter"}
-                  onClick={() => setStatusTab("attendance")}
-                >
-                  출석 현황
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={statusTab === "warning"}
-                  className={statusTab === "warning" ? "filter active" : "filter"}
-                  onClick={() => setStatusTab("warning")}
-                >
-                  벌점 현황
-                </button>
-              </div>
-            </div>
-            <div className="sent-list">
-              {statusTab === "attendance" ? (
-                attendanceRows.length ? (
-                  attendanceRows.map((a: any) => (
+              <div className="sent-list">
+                {tab === "attendance" ? (
+                  attendanceRows.length ? (
+                    attendanceRows.map((a: any) => (
+                      <article
+                        className="sent-card"
+                        key={a.id || `${a.student_id}-${a.created_at}`}
+                      >
+                        <span className="tag attendance">
+                          {ATTENDANCE_STATUS_LABELS[a.new_status as keyof typeof ATTENDANCE_STATUS_LABELS] || a.new_status}
+                        </span>
+                        <h3>{a.attendance_date}</h3>
+                        <p>{new Date(a.created_at).toLocaleString("ko-KR")}</p>
+                        {a.parent_visible_reason && (
+                          <p className="sent-preview">{a.parent_visible_reason}</p>
+                        )}
+                      </article>
+                    ))
+                  ) : (
+                    <p className="muted">표시할 출석 내역이 없습니다.</p>
+                  )
+                ) : warningRows.length ? (
+                  warningRows.map((w: any) => (
                     <article
                       className="sent-card"
-                      key={a.id || `${a.student_id}-${a.created_at}`}
+                      key={w.id || `${w.student_id}-${w.created_at}`}
                     >
-                      <span className="tag attendance">
-                        {ATTENDANCE_STATUS_LABELS[a.new_status as keyof typeof ATTENDANCE_STATUS_LABELS] || a.new_status}
-                      </span>
-                      <h3>{a.attendance_date}</h3>
-                      <p>{new Date(a.created_at).toLocaleString("ko-KR")}</p>
-                      {a.parent_visible_reason && (
-                        <p className="sent-preview">{a.parent_visible_reason}</p>
+                      <span className="tag warning">벌점</span>
+                      <h3>
+                        {w.entry_type === "grace_adjustment"
+                          ? "은혜의 희월"
+                          : w.warning_date}
+                      </h3>
+                      <p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>
+                      {w.parent_visible_reason && (
+                        <p className="sent-preview">{w.parent_visible_reason}</p>
                       )}
                     </article>
                   ))
                 ) : (
-                  <p className="muted">표시할 출석 내역이 없습니다.</p>
-                )
-              ) : warningRows.length ? (
-                warningRows.map((w: any) => (
-                  <article
-                    className="sent-card"
-                    key={w.id || `${w.student_id}-${w.created_at}`}
-                  >
-                    <span className="tag warning">벌점</span>
-                    <h3>
-                      {w.entry_type === "grace_adjustment"
-                        ? "은혜의 희월"
-                        : w.warning_date}
-                    </h3>
-                    <p>{new Date(w.created_at).toLocaleString("ko-KR")}</p>
-                    {w.parent_visible_reason && (
-                      <p className="sent-preview">{w.parent_visible_reason}</p>
-                    )}
-                  </article>
-                ))
-              ) : (
-                <p className="muted">표시할 벌점 내역이 없습니다.</p>
-              )}
-            </div>
-          </section>
-
-          <section className="content-card parent-notice-card">
-            <div className="section-heading parent-notice-heading">
-              <div>
-                <p className="eyebrow">NOTIFICATIONS</p>
-                <h2>학교 알림</h2>
-              </div>
-              <div className="filter-row">
-                {[
-                  ["all", "전체"],
-                  ["unread", "읽지 않음"],
-                  ["individual", "개별 알림"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    className={filter === value ? "filter active" : "filter"}
-                    onClick={() => setFilter(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {loading ? (
-              <p className="muted">알림을 불러오는 중입니다...</p>
-            ) : (
-              <div className="notice-list">
-                {filtered.map((notice) => {
-                  const ack = notice.acknowledgements?.[0];
-                  return (
-                    <button
-                      className={`notice-row ${!ack?.read_at ? "unread" : ""}`}
-                      key={notice.id}
-                      onClick={() => openNotice(notice)}
-                    >
-                      <span className={`notice-icon ${notice.type}`}>
-                        {notice.type === "warning"
-                          ? "!"
-                          : notice.type === "urgent"
-                            ? "⚑"
-                            : notice.type === "praise"
-                              ? "🎉"
-                              : "✉"}
-                      </span>
-                      <span className="notice-main">
-                        <span className="notice-meta">
-                          <b>{noticeTypeLabel(notice)}</b> ·{" "}
-                          {recipientText(notice)}
-                        </span>
-                        <strong>{notice.title}</strong>
-                        <small>
-                          {new Date(notice.published_at).toLocaleString(
-                            "ko-KR",
-                          )}
-                        </small>
-                      </span>
-                      <span className="notice-state">
-                        {ack?.confirmed_at
-                          ? "확인 완료"
-                          : ack?.read_at
-                            ? "읽음"
-                            : "새 알림"}
-                      </span>
-                    </button>
-                  );
-                })}
-                {!filtered.length && (
-                  <div className="empty-state">해당하는 알림이 없습니다.</div>
+                  <p className="muted">표시할 벌점 내역이 없습니다.</p>
                 )}
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          {tab === "attendance-stats" && <ParentAttendanceStats />}
+          {tab === "warning-stats" && <ParentWarningStats />}
+
+          {tab === "notices" && (
+            <section className="content-card parent-notice-card">
+              <div className="section-heading parent-notice-heading">
+                <div>
+                  <p className="eyebrow">NOTIFICATIONS</p>
+                  <h2>학교 알림</h2>
+                </div>
+                <div className="filter-row">
+                  {[
+                    ["all", "전체"],
+                    ["unread", "읽지 않음"],
+                    ["individual", "개별 알림"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={filter === value ? "filter active" : "filter"}
+                      onClick={() => setFilter(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loading ? (
+                <p className="muted">알림을 불러오는 중입니다...</p>
+              ) : (
+                <div className="notice-list">
+                  {filtered.map((notice) => {
+                    const ack = notice.acknowledgements?.[0];
+                    return (
+                      <button
+                        className={`notice-row ${!ack?.read_at ? "unread" : ""}`}
+                        key={notice.id}
+                        onClick={() => openNotice(notice)}
+                      >
+                        <span className={`notice-icon ${notice.type}`}>
+                          {notice.type === "warning"
+                            ? "!"
+                            : notice.type === "urgent"
+                              ? "⚑"
+                              : notice.type === "praise"
+                                ? "🎉"
+                                : "✉"}
+                        </span>
+                        <span className="notice-main">
+                          <span className="notice-meta">
+                            <b>{noticeTypeLabel(notice)}</b> ·{" "}
+                            {recipientText(notice)}
+                          </span>
+                          <strong>{notice.title}</strong>
+                          <small>
+                            {new Date(notice.published_at).toLocaleString(
+                              "ko-KR",
+                            )}
+                          </small>
+                        </span>
+                        <span className="notice-state">
+                          {ack?.confirmed_at
+                            ? "확인 완료"
+                            : ack?.read_at
+                              ? "읽음"
+                              : "새 알림"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {!filtered.length && (
+                    <div className="empty-state">해당하는 알림이 없습니다.</div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
         </main>
       </div>
 
