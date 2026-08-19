@@ -222,34 +222,30 @@ export default function ParentDashboard({ userId }: { userId: string }) {
 
   async function saveReply() {
     if (!selected || !reply.trim()) return;
-    const supabase = createClient();
-    const now = new Date().toISOString();
-    const { error } = await supabase.from("acknowledgements").upsert(
-      {
-        notice_id: selected.id,
-        parent_id: userId,
-        read_at: now,
-        parent_reply: reply.trim(),
-        replied_at: now,
-      },
-      { onConflict: "notice_id,parent_id" },
-    );
-    setMessage(
-      error ? "답변 저장에 실패했습니다." : "학교에 답변을 전달했습니다.",
-    );
-    if (!error) {
+    const trimmedReply = reply.trim();
+    try {
+      const response = await fetch("/api/parent/notice-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noticeId: selected.id, reply: trimmedReply }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "답변 저장에 실패했습니다.");
+      setMessage("학교에 답변을 전달했습니다.");
       const previous = selected.acknowledgements?.[0];
       setSelected({
         ...selected,
         acknowledgements: [
           {
-            read_at: now,
+            read_at: result.repliedAt,
             confirmed_at: previous?.confirmed_at || null,
-            parent_reply: reply.trim(),
-            replied_at: now,
+            parent_reply: trimmedReply,
+            replied_at: result.repliedAt,
           },
         ],
       });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "답변 저장에 실패했습니다.");
     }
     await loadDashboard({ initial: false });
   }

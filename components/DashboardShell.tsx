@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import ParentDashboard from "@/components/ParentDashboard";
 import StaffDashboard from "@/components/StaffDashboard";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, resolveDashboardView } from "@/lib/roles";
 
 export default function DashboardShell({ userId, name, roles, legacyRole, initialView }: { userId: string; name: string; roles: AppRole[]; legacyRole?: string | null; initialView?: string | null }) {
+  const searchParams = useSearchParams();
   const [view, setView] = useState<DashboardView>(() => resolveDashboardView(roles, initialView, legacyRole));
-  const [staffTab, setStaffTab] = useState("compose");
+  // Staff push notifications (see lib/push/payload.ts) deep-link with ?tab=notices so the
+  // notification lands directly on the sent-notices list instead of the compose tab.
+  const [staffTab, setStaffTab] = useState(() => searchParams.get("tab") || "compose");
   const storageKey = `holy-guide-dashboard-view:${userId}`;
   const staffRole = effectiveStaffRole(roles);
   const canStaff = canUseStaffView(roles);

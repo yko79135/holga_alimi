@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
@@ -28,6 +29,7 @@ type Feedback = { type: "success" | "error"; text: string };
 type StudentPreview = { name: string; grade: string; parentLinkCount: number; individualNoticeCount: number };
 
 export default function StaffDashboard({ userId, role, tab, onTabChange }: { userId: string; role: string; tab: string; onTabChange: (tab: string) => void }) {
+  const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -119,6 +121,10 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { void loadStudents(); }, [loadStudents]);
   useEffect(() => { if (tab === "compose") void loadStudents(); }, [tab, loadStudents]);
   useEffect(() => { if (tab === "notices") void loadNotices(); }, [tab, loadNotices]);
+  useEffect(() => {
+    const noticeId = searchParams.get("notice");
+    if (noticeId) setExpandedNoticeId(noticeId);
+  }, [searchParams]);
   useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); void loadParentRoleIds(); } }, [tab, loadStudents, loadProfiles, loadParentLinks, loadParentRoleIds]);
   useLiveRefresh({
     channelName: `staff-dashboard-${userId}-${role}`,

@@ -180,7 +180,7 @@ export async function POST(req: Request) {
     after(async () => {
       const admin = createAdminClient();
       try {
-        const push = await sendNoticePushes({ id: noticeId, target_scope: "student", target_grade: null });
+        const push = await sendNoticePushes({ id: noticeId, target_scope: "student", target_grade: null, title: content.title, body: content.body, created_by: user.id });
         const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", studentId);
         if (error) console.error("warning-grant-push-count-update-failed", { batchId, noticeId, code: error.code, message: error.message });
       } catch (error) {
