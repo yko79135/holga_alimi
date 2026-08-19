@@ -1655,6 +1655,9 @@ h3 {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+.student-edit-panel {
+  grid-column: 1/-1;
+}
 @media (max-width: 1000px) {
   .student-management-toolbar {
     grid-template-columns: 1fr 1fr;

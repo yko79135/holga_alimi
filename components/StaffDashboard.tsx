@@ -10,7 +10,7 @@ import PointStats from "@/components/warnings/PointStats";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
 import AttendanceStats from "@/components/attendance/AttendanceStats";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
-import { CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
+import { COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
 type ParentLink = { parentId: string; fullName: string; email: string; linkedStudents: Array<{ id: string; name: string; grade: string }> };
@@ -58,6 +58,9 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentFormOpen, setStudentFormOpen] = useState(false);
+  const [editStudentName, setEditStudentName] = useState("");
+  const [editStudentGrade, setEditStudentGrade] = useState("");
+  const [studentEditSaving, setStudentEditSaving] = useState(false);
 
   const [form, setForm] = useState({
     type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false, customTypeLabel:"",
@@ -305,6 +308,24 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     } finally { setDeleteSubmitting(false); }
   }
 
+  async function saveStudentEdit(studentId: string) {
+    const name = editStudentName.trim();
+    const grade = editStudentGrade.trim();
+    if (!name || !grade) { setErrorMessage("이름과 학년을 입력해주세요."); return; }
+    setStudentEditSaving(true); setErrorMessage(""); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, grade }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학생 정보를 수정하지 못했습니다.");
+      setStudents((current) => sortStudents(current.map((student) => student.id === studentId ? { ...student, name: result.student.name, grade: result.student.grade } : student)));
+      setMessage("학생 정보를 수정했습니다.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "학생 정보를 수정하지 못했습니다.");
+    } finally {
+      setStudentEditSaving(false);
+    }
+  }
+
   async function linkParent(studentId: string, parentId: string) {
     if (!parentId || linkingStudentId) return;
     setLinkingStudentId(studentId); setErrorMessage(""); setMessage("");
@@ -371,7 +392,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <div>
               <label>알림 종류</label>
               <select value={form.type} onChange={(e) => setForm({...form,type:e.target.value})}>
-                {Object.entries(NOTICE_TYPE_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+                {COMPOSABLE_NOTICE_TYPES.map((value) => <option key={value} value={value}>{NOTICE_TYPE_LABELS[value]}</option>)}
                 <option value={CUSTOM_NOTICE_TYPE}>직접 입력</option>
               </select>
             </div>
@@ -465,7 +486,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
               const missing = gradeStudents.filter((student) => !(parentLinks[student.id] || []).length).length;
               return <section className="student-grade-section" key={gradeName}><button type="button" className="student-grade-header" aria-expanded={isOpen} onClick={() => setExpandedGrades((current) => ({ ...current, [gradeName]: !isOpen }))}><strong>{gradeName}</strong><span>{gradeStudents.length}명 · 학부모 미연결 {missing}명</span><em>{isOpen ? "접기" : "펼치기"}</em></button>{isOpen && <div className="compact-student-list">{gradeStudents.map((student) => {
                 const linked = parentLinks[student.id] || []; const busy = linkingStudentId === student.id; const query = (parentSearch[student.id] || "").trim().toLowerCase(); const linkedIds = new Set(linked.map((parent) => parent.parentId)); const candidates = query ? parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8) : []; const editing = editingStudentId === student.id;
-                return <article className="compact-student-card" key={student.id}><div className="compact-student-main"><span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span><div><h3>{student.name}</h3><p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p><small>{linked.length ? linked.map((p) => p.fullName || p.email).join(", ") : "연결된 학부모 없음"}</small></div></div><div className="compact-student-status"><span className="pill">{linked.length ? `학부모 ${linked.length}명` : "학부모 미연결"}</span><button type="button" className="secondary" onClick={() => { setEditingStudentId(editing ? null : student.id); if (!editing) void loadStudentParents(student.id); }}>{editing ? "닫기" : "수정"}</button>{role === "admin" && <button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>삭제</button>}</div>{editing && role === "admin" && <div className="focused-student-editor"><section><div className="section-label-row"><span>연결된 학부모</span><strong>{linked.length}명</strong></div>{linked.length ? linked.map((parent) => <div className="linked-parent-row" key={parent.parentId}><div className="linked-parent-details"><strong>{parent.fullName || parent.email}</strong><span>{parent.email}</span></div><button type="button" className="unlink-button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button></div>) : <div className="linked-parent-empty"><strong>학부모 미연결</strong><span>아래 검색으로 기존 학부모 계정을 연결하세요.</span></div>}</section><section className="parent-link-panel"><div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label></div><input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="parent-search-results">{candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}><span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em></button>)}{!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 연결된 계정입니다.</p>}</div>}</section></div>}</article>;
+                return <article className="compact-student-card" key={student.id}><div className="compact-student-main"><span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span><div><h3>{student.name}</h3><p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p><small>{linked.length ? linked.map((p) => p.fullName || p.email).join(", ") : "연결된 학부모 없음"}</small></div></div><div className="compact-student-status"><span className="pill">{linked.length ? `학부모 ${linked.length}명` : "학부모 미연결"}</span><button type="button" className="secondary" onClick={() => { setEditingStudentId(editing ? null : student.id); if (!editing) { setEditStudentName(student.name); setEditStudentGrade(student.grade); void loadStudentParents(student.id); } }}>{editing ? "닫기" : "수정"}</button>{role === "admin" && <button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>삭제</button>}</div>{editing && role === "admin" && <div className="focused-student-editor"><section className="student-edit-panel"><div className="section-label-row"><span>학생 정보</span></div><label>이름</label><input value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} /><label>학년</label><input value={editStudentGrade} onChange={(e) => setEditStudentGrade(e.target.value)} placeholder="G7E" /><button type="button" className="primary" onClick={() => saveStudentEdit(student.id)} disabled={studentEditSaving}>{studentEditSaving ? "저장 중..." : "학생 정보 저장"}</button></section><section><div className="section-label-row"><span>연결된 학부모</span><strong>{linked.length}명</strong></div>{linked.length ? linked.map((parent) => <div className="linked-parent-row" key={parent.parentId}><div className="linked-parent-details"><strong>{parent.fullName || parent.email}</strong><span>{parent.email}</span></div><button type="button" className="unlink-button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button></div>) : <div className="linked-parent-empty"><strong>학부모 미연결</strong><span>아래 검색으로 기존 학부모 계정을 연결하세요.</span></div>}</section><section className="parent-link-panel"><div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label></div><input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="parent-search-results">{candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}><span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em></button>)}{!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 연결된 계정입니다.</p>}</div>}</section></div>}</article>;
               })}</div>}</section>;
             })}</div>
             {!filteredStudents.length && <div className="empty-state">검색 조건에 맞는 학생이 없습니다.</div>}

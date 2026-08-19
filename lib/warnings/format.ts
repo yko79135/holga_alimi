@@ -25,7 +25,9 @@ export function buildWarningNotice(studentName: string, changes: WarningCellChan
     `이번 달 ${label} 합계: ${monthlyTotal}점`,
   ];
   if (reasons) lines.push("", onlyCorrection ? "정정 사유" : "사유", reasons);
-  lines.push("", isPraise ? "가정에서도 함께 축하하고 격려해 주세요." : "가정에서도 따뜻한 관심과 격려 부탁드립니다.", "자세한 내용은 포털에서 확인해 주세요.");
+  lines.push("");
+  if (isPraise) lines.push("가정에서도 함께 축하하고 격려해 주세요.");
+  lines.push("자세한 내용은 포털에서 확인해 주세요.");
   return { title, body: lines.join("\n") };
 }
 
@@ -44,7 +46,7 @@ export function buildPointNotice(params: { kind: PointKind; studentName: string;
   lines.push(`${isPraise ? "부여 점수" : "차감 점수"}: ${points}점`);
   if (detail) lines.push("", "세부 내용", detail);
   lines.push("", `이번 달 ${isPraise ? "칭찬" : "훈계"} 점수 합계: ${monthlyTotal}점`, "");
-  lines.push(isPraise ? "가정에서도 함께 축하하고 격려해 주세요." : "가정에서도 따뜻한 관심과 격려 부탁드립니다.");
+  if (isPraise) lines.push("가정에서도 함께 축하하고 격려해 주세요.");
   lines.push("자세한 내용은 포털에서 확인해 주세요.");
   return { title, body: lines.join("\n") };
 }

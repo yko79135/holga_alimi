@@ -211,23 +211,12 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         },
         { onConflict: "notice_id,parent_id" },
       );
-    setMessage(
-      error ? "확인 처리에 실패했습니다." : "확인 완료로 기록되었습니다.",
-    );
-    if (!error) {
-      const previous = selected.acknowledgements?.[0];
-      setSelected({
-        ...selected,
-        acknowledgements: [
-          {
-            read_at: now,
-            confirmed_at: now,
-            parent_reply: previous?.parent_reply || null,
-            replied_at: previous?.replied_at || null,
-          },
-        ],
-      });
+    if (error) {
+      setMessage("확인 처리에 실패했습니다.");
+      await loadDashboard({ initial: false });
+      return;
     }
+    closeNotice();
     await loadDashboard({ initial: false });
   }
 
