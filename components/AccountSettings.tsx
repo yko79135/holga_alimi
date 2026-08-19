@@ -92,7 +92,7 @@ export default function AccountSettings({ email, roles }: { email: string; roles
   const [pushState, setPushState] = useState<PushState>("idle");
   const [pushError, setPushError] = useState("");
   const [pushBusy, setPushBusy] = useState(false);
-  const [showIos, setShowIos] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   const push = useMemo(() => pushError || PUSH_MESSAGES[pushState], [pushError, pushState]);
 
@@ -315,9 +315,24 @@ export default function AccountSettings({ email, roles }: { email: string; roles
         <div className="topbar-actions">
           <button className="primary" onClick={enablePush} disabled={pushBusy}>{pushBusy ? "처리 중..." : "앱 알림 켜기"}</button>
           <button className="secondary" onClick={disablePush} disabled={pushBusy}>앱 알림 끄기</button>
-          <button className="secondary" onClick={() => setShowIos(!showIos)}>홈 화면 추가 방법 보기</button>
+          <button className="secondary" onClick={() => setShowInstallHelp(!showInstallHelp)}>홈 화면 추가 방법 보기</button>
         </div>
-        {showIos && <ol className="muted"><li>Safari에서 포털을 엽니다.</li><li>공유 버튼을 누릅니다.</li><li>홈 화면에 추가를 선택합니다.</li><li>홈 화면 아이콘으로 다시 열고 앱 알림 켜기를 누릅니다.</li></ol>}
+        {showInstallHelp && (
+          <div className="install-help">
+            <div>
+              <strong>Android (Chrome · 삼성 인터넷)</strong>
+              <ol className="muted">
+                <li>브라우저 메뉴(⋮)에서 &quot;홈 화면에 추가&quot; 또는 &quot;앱 설치&quot;를 선택합니다.</li>
+                <li>홈 화면 아이콘으로 다시 열고 앱 알림 켜기를 누릅니다.</li>
+                <li>알림이 늦게 오거나 오지 않으면, 기기 설정 → 배터리 → 절전 관리에서 이 브라우저(또는 설치한 앱)를 &quot;잠자기 앱&quot;·&quot;절전 앱&quot; 목록에서 제외해 주세요. 특히 삼성 기기는 배터리 최적화 때문에 알림이 지연되거나 오지 않는 경우가 많습니다.</li>
+              </ol>
+            </div>
+            <div>
+              <strong>iPhone · iPad (Safari)</strong>
+              <ol className="muted"><li>Safari에서 포털을 엽니다.</li><li>공유 버튼을 누릅니다.</li><li>홈 화면에 추가를 선택합니다.</li><li>홈 화면 아이콘으로 다시 열고 앱 알림 켜기를 누릅니다.</li></ol>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
