@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
+import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS } from "@/lib/attendance/schoolDays";
 
 export const runtime = "nodejs";
 
@@ -39,14 +40,20 @@ export async function GET(req: Request) {
   }
 
   const summaries = summarizeAttendanceForStudents(entries, ids);
-  const rows = (students || []).map((student: any) => ({
-    id: student.id,
-    name: student.name,
-    grade: student.grade,
-    homeroom: student.homeroom,
-    parentCount: Array.isArray(student.parent_students) ? student.parent_students.length : 0,
-    ...summaries[student.id],
-  }));
+  const { data: term } = await a.supabase.from("academic_terms").select("total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle();
+  const totalInstructionalDays = term?.total_instructional_days ?? DEFAULT_TOTAL_INSTRUCTIONAL_DAYS;
+  const rows = (students || []).map((student: any) => {
+    const summary = summaries[student.id];
+    return {
+      id: student.id,
+      name: student.name,
+      grade: student.grade,
+      homeroom: student.homeroom,
+      parentCount: Array.isArray(student.parent_students) ? student.parent_students.length : 0,
+      presentEstimate: Math.max(0, totalInstructionalDays - (summary?.semesterTotal || 0)),
+      ...summary,
+    };
+  });
 
-  return NextResponse.json({ students: rows, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
+  return NextResponse.json({ students: rows, totalInstructionalDays, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
 }

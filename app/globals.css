@@ -1182,6 +1182,13 @@ h3 {
   font-size: 12px;
   color: var(--teal-900);
 }
+.total-days-edit {
+  gap: 8px;
+}
+.total-days-input {
+  width: 56px;
+  text-align: center;
+}
 .point-history {
   margin-top: 16px;
 }
