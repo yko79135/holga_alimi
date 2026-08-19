@@ -1185,6 +1185,42 @@ h3 {
 .total-days-edit {
   gap: 8px;
 }
+.student-picker {
+  margin-top: 10px;
+}
+.student-picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.student-picker-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+  padding: 10px;
+}
+.student-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+.student-picker-item:hover {
+  background: var(--mint-100);
+}
+.student-picker-item input {
+  width: 16px;
+  height: 16px;
+}
 .total-days-input {
   width: 56px;
   text-align: center;

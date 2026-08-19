@@ -66,8 +66,10 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentEditSaving, setStudentEditSaving] = useState(false);
 
   const [form, setForm] = useState({
-    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false, customTypeLabel:"",
+    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[] as string[], requiresConfirmation:false, customTypeLabel:"",
   });
+  const [studentPickerGrade, setStudentPickerGrade] = useState("");
+  const [studentPickerSearch, setStudentPickerSearch] = useState("");
 
   const sortStudents = (items: Student[]) => [...items].sort((a, b) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name));
 
@@ -183,7 +185,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     setMessage("");
     setErrorMessage("");
     if (form.targetScope === "grade" && !form.targetGrade) return setErrorMessage("대상 학년을 선택해주세요.");
-    if (form.targetScope === "student" && !form.studentId) return setErrorMessage("대상 학생을 선택해주세요.");
+    if (form.targetScope === "student" && !form.studentIds.length) return setErrorMessage("대상 학생을 선택해주세요.");
     if (form.type === CUSTOM_NOTICE_TYPE && !form.customTypeLabel.trim()) return setErrorMessage("알림 종류를 직접 입력해주세요.");
     if (files.length > MAX_NOTICE_ATTACHMENTS) return setErrorMessage("PDF는 최대 5개까지 첨부할 수 있습니다.");
     setLoading(true);
@@ -202,7 +204,9 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       const res = await fetch("/api/notices/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, attachments }) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "게시 중 오류가 발생했습니다.");
-      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false, customTypeLabel:"" });
+      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[], requiresConfirmation:false, customTypeLabel:"" });
+      setStudentPickerGrade("");
+      setStudentPickerSearch("");
       setFiles([]);
       setMessage(`${result.message} 앱 알림 ${result.push?.sent || 0}건 전송 · 알림 미등록 사용자 ${result.push?.unsubscribed || 0}명 · 실패 ${result.push?.failed || 0}건`);
       await load();
@@ -408,9 +412,32 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
               <label>세부 대상</label>
               {form.targetScope === "school" && <input value="모든 학부모" disabled />}
               {form.targetScope === "grade" && <select value={form.targetGrade} onChange={(e) => setForm({...form,targetGrade:e.target.value})}><option value="">학년 선택</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select>}
-              {form.targetScope === "student" && <select value={form.studentId} onChange={(e) => setForm({...form,studentId:e.target.value})}><option value="">학생 선택</option>{students.map((student) => <option key={student.id} value={student.id}>{student.grade} · {student.name}</option>)}</select>}
+              {form.targetScope === "student" && <input value={form.studentIds.length ? `${form.studentIds.length}명 선택됨` : "아래에서 학생 선택"} disabled />}
             </div>
           </div>
+          {form.targetScope === "student" && (
+            <div className="student-picker">
+              <div className="student-picker-toolbar">
+                <label>학년 필터<select value={studentPickerGrade} onChange={(e) => setStudentPickerGrade(e.target.value)}><option value="">전체 학년</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select></label>
+                <label>학생 검색<input value={studentPickerSearch} onChange={(e) => setStudentPickerSearch(e.target.value)} placeholder="이름 검색" /></label>
+                <span className="pill">{form.studentIds.length}명 선택됨</span>
+              </div>
+              <div className="student-picker-list">
+                {students
+                  .filter((student) => (!studentPickerGrade || student.grade === studentPickerGrade) && (!studentPickerSearch.trim() || student.name.toLowerCase().includes(studentPickerSearch.trim().toLowerCase())))
+                  .map((student) => {
+                    const checked = form.studentIds.includes(student.id);
+                    return (
+                      <label className="student-picker-item" key={student.id}>
+                        <input type="checkbox" checked={checked} onChange={() => setForm((current) => ({ ...current, studentIds: checked ? current.studentIds.filter((id) => id !== student.id) : [...current.studentIds, student.id] }))} />
+                        <span>{student.grade} · {student.name}</span>
+                      </label>
+                    );
+                  })}
+                {!students.length && <p className="muted">등록된 학생이 없습니다.</p>}
+              </div>
+            </div>
+          )}
           {form.type === CUSTOM_NOTICE_TYPE && (
             <><label>알림 종류 직접 입력</label><input value={form.customTypeLabel} onChange={(e) => setForm({...form,customTypeLabel:e.target.value})} required placeholder="예: 체험학습 안내" /></>
           )}
