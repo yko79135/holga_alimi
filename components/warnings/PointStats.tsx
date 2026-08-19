@@ -4,6 +4,19 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import type { MonthlyWarningBreakdown, WarningStudentSummary } from "@/lib/warnings/stats";
 
+type AuditEntry = {
+  id: string;
+  warning_date: string | null;
+  entry_type: "daily" | "grace_adjustment";
+  kind: "discipline" | "praise" | null;
+  category: string | null;
+  delta: number;
+  parent_visible_reason: string | null;
+  teacher_note: string | null;
+  created_at: string;
+  profiles?: { full_name: string } | null;
+};
+
 type StatsStudent = {
   id: string;
   name: string;
@@ -34,6 +47,30 @@ export default function PointStats({ role }: { role: string }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [entriesByStudent, setEntriesByStudent] = useState<Record<string, AuditEntry[]>>({});
+  const [entriesLoadingId, setEntriesLoadingId] = useState<string | null>(null);
+  const [entriesError, setEntriesError] = useState("");
+
+  const loadEntries = useCallback(async (studentId: string) => {
+    setEntriesLoadingId(studentId);
+    setEntriesError("");
+    try {
+      const response = await fetch(`/api/warnings/audit?studentId=${encodeURIComponent(studentId)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "이력을 불러오지 못했습니다.");
+      setEntriesByStudent((current) => ({ ...current, [studentId]: result.entries || [] }));
+    } catch (error) {
+      setEntriesError(error instanceof Error ? error.message : "이력을 불러오지 못했습니다.");
+    } finally {
+      setEntriesLoadingId(null);
+    }
+  }, []);
+
+  function toggleStudentRow(studentId: string) {
+    const next = expandedId === studentId ? null : studentId;
+    setExpandedId(next);
+    if (next && !entriesByStudent[next]) void loadEntries(next);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +134,7 @@ export default function PointStats({ role }: { role: string }) {
               const monthly = mergeMonthly(row.discipline?.monthly || [], row.praise?.monthly || []);
               return (
                 <Fragment key={row.id}>
-                  <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => setExpandedId(isOpen ? null : row.id)}>
+                  <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => toggleStudentRow(row.id)}>
                     <td className="sticky grade"><b>{row.grade}</b></td>
                     <td className="sticky name">{row.name}</td>
                     <td><b>{row.discipline?.semesterTotal ?? 0}점</b></td>
@@ -120,6 +157,29 @@ export default function PointStats({ role }: { role: string }) {
                         ) : (
                           <p className="muted">이번 학기 기록이 없습니다.</p>
                         )}
+                        <div className="point-history">
+                          <p className="eyebrow">POINT HISTORY</p>
+                          <h3>칭찬·훈계 상세 내역</h3>
+                          {entriesLoadingId === row.id && <p className="muted">불러오는 중...</p>}
+                          {entriesError && entriesLoadingId !== row.id && <p className="form-error">{entriesError}</p>}
+                          {entriesLoadingId !== row.id && (entriesByStudent[row.id]?.length ? (
+                            <ul className="point-history-list">
+                              {entriesByStudent[row.id]!.map((entry) => (
+                                <li className="point-history-item" key={entry.id}>
+                                  <div className="point-history-top">
+                                    <span className={`tag ${entry.kind === "praise" ? "praise" : "warning"}`}>{entry.kind === "praise" ? "칭찬" : "훈계"}</span>
+                                    <b>{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</b>
+                                    <span className="muted">{entry.warning_date ? new Date(entry.warning_date).toLocaleDateString("ko-KR") : entry.entry_type === "grace_adjustment" ? "희월·조정" : "-"}</span>
+                                  </div>
+                                  <p>{entry.parent_visible_reason || entry.category || "사유 없음"}</p>
+                                  <small className="muted">{entry.profiles?.full_name ? `${entry.profiles.full_name} · ` : ""}{new Date(entry.created_at).toLocaleString("ko-KR")}</small>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            !entriesError && <p className="muted">개별 이력이 없습니다.</p>
+                          ))}
+                        </div>
                       </td>
                     </tr>
                   )}

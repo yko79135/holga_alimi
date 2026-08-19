@@ -58,6 +58,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentFormOpen, setStudentFormOpen] = useState(false);
+  const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
   const [editStudentName, setEditStudentName] = useState("");
   const [editStudentGrade, setEditStudentGrade] = useState("");
   const [studentEditSaving, setStudentEditSaving] = useState(false);
@@ -430,19 +431,31 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           </div>
           <div className="sent-list">
             {notices.map((notice) => {
-              const replies = (notice.acknowledgements || []).filter((ack) => ack.parent_reply);
+              const acks = notice.acknowledgements || [];
+              const isExpanded = expandedNoticeId === notice.id;
               return <article className="sent-card" key={notice.id}>
                 <div className="sent-top">
-                  <div className="sent-top-main">
-                    <label className="notice-select"><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
+                  <div className="sent-top-main" role="button" tabIndex={0} aria-expanded={isExpanded} onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)} onKeyDown={(e) => { if (e.key === "Enter") setExpandedNoticeId(isExpanded ? null : notice.id); }}>
+                    <label className="notice-select" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
                     <div><span className={`tag ${notice.type}`}>{noticeTypeLabel(notice)}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div>
                   </div>
-                  <div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
+                  <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
                 </div>
                 <p className="sent-preview">{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
+                <button type="button" className="secondary" onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
+                {isExpanded && (
+                  <div className="notice-detail-list">
+                    {acks.length ? acks.map((ack, index) => (
+                      <div className="notice-detail-row" key={index}>
+                        <strong>{ack.profiles?.full_name || "이름 없음"}</strong>
+                        <span>{ack.confirmed_at ? `확인 완료 · ${new Date(ack.confirmed_at).toLocaleString("ko-KR")}` : ack.read_at ? `읽음 · ${new Date(ack.read_at).toLocaleString("ko-KR")}` : "미확인"}</span>
+                        {ack.parent_reply && <p>“{ack.parent_reply}”</p>}
+                      </div>
+                    )) : <p className="muted">아직 확인한 학부모가 없습니다.</p>}
+                  </div>
+                )}
                 <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>
-                {replies.length > 0 && <div className="reply-log"><strong>학부모 답변</strong>{replies.map((ack,index) => <p key={index}>“{ack.parent_reply}”</p>)}</div>}
               </article>;
             })}
             {!notices.length && <div className="empty-state">아직 발송한 알림이 없습니다.</div>}
