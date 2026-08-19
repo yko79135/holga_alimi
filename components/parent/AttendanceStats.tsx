@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { ATTENDANCE_EXCEPTION_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceExceptionStatus } from "@/lib/attendance/types";
 
 type StatsStudent = {
   id: string;
@@ -9,7 +10,7 @@ type StatsStudent = {
   grade: string;
   homeroom: string | null;
   presentEstimate: number;
-  semesterCounts: { late: number; absent: number; early_leave: number; sick_leave: number };
+  semesterCounts: Record<AttendanceExceptionStatus, number>;
 };
 
 const now = new Date();
@@ -62,9 +63,9 @@ export default function ParentAttendanceStats() {
           <h3>{row.name} <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span></h3>
           <div className="stats-row">
             <div className="stat-card"><span>출석</span><strong>{row.presentEstimate}</strong></div>
-            <div className="stat-card"><span>지각</span><strong>{row.semesterCounts?.late ?? 0}</strong></div>
-            <div className="stat-card"><span>결석</span><strong>{row.semesterCounts?.absent ?? 0}</strong></div>
-            <div className="stat-card"><span>병결</span><strong>{row.semesterCounts?.sick_leave ?? 0}</strong></div>
+            {ATTENDANCE_EXCEPTION_STATUSES.map((status) => (
+              <div className="stat-card" key={status}><span>{ATTENDANCE_STATUS_LABELS[status]}</span><strong>{row.semesterCounts?.[status] ?? 0}</strong></div>
+            ))}
           </div>
         </div>
       ))}

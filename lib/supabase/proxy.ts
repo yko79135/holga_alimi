@@ -36,6 +36,9 @@ export async function updateSession(request: NextRequest) {
   if (!data.user && !isPublic) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
+    // Preserve where the request was headed (e.g. a push notification's ?view=parent&notice=<id>
+    // deep link) so the login form can send the user straight there instead of a bare dashboard.
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
 

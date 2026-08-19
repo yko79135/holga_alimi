@@ -1243,34 +1243,52 @@ h3 {
   width: 56px;
   text-align: center;
 }
-.grace-apply {
-  margin-top: 16px;
-  padding: 14px;
+.grace-cell {
+  min-width: 190px;
+}
+.grace-stepper {
+  display: grid;
+  gap: 6px;
+}
+.grace-stepper-value {
+  font-size: 12px;
+}
+.grace-stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.grace-arrow {
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--cream);
+  border-radius: 8px;
+  background: var(--white);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.grace-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.grace-stepper .success-message,
+.grace-stepper .form-error {
+  font-size: 12px;
+  margin: 0;
 }
 .point-history {
   margin-top: 16px;
 }
-.point-history-list {
+.point-history-tables {
   display: grid;
-  gap: 10px;
+  gap: 18px;
   margin-top: 10px;
-  list-style: none;
-  padding: 0;
 }
-.point-history-item {
-  background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-.point-history-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.point-history-tables h4 {
+  margin: 0 0 8px;
+  color: var(--teal-900);
 }
 @media (max-width: 700px) {
   .warning-toolbar {

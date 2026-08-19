@@ -19,11 +19,11 @@ async function staff() {
   return { user };
 }
 
-/** 희월 정산: applies exactly one grace unit to one student per call (칭찬 -20, 훈계 -1), used
- * from a per-student button in 점수 통계. Both totals are re-derived from the existing ledger
- * (which already nets out any prior grace_conversion entries), so this is naturally safe to
- * retry -- a stale click just gets rejected by the same floor check on the next attempt. Neither
- * total is allowed to go below 0: if either is short, nothing is applied. */
+/** 희월 정산: applies `units` grace units to one student per call (칭찬 -20*units, 훈계
+ * -1*units), used from the up/down stepper + 적용 button in 점수 통계. Both totals are re-derived
+ * from the existing ledger (which already nets out any prior grace_conversion entries), so this
+ * is naturally safe to retry -- a stale click just gets rejected by the same floor check on the
+ * next attempt. Neither total is allowed to go below 0: if either is short, nothing is applied. */
 export async function POST(req: Request) {
   const a = await staff();
   if ("e" in a) return a.e;
@@ -33,8 +33,9 @@ export async function POST(req: Request) {
   const academicYear = Number(body.academicYear);
   const semester = Number(body.semester);
   const idempotencyKey = String(body.idempotencyKey || "").trim();
-  if (!studentId || !academicYear || ![1, 2].includes(semester) || !idempotencyKey) {
-    return NextResponse.json({ error: "학생, 학년도, 학기를 확인해 주세요." }, { status: 400 });
+  const units = Number.isInteger(body.units) ? Number(body.units) : 1;
+  if (!studentId || !academicYear || ![1, 2].includes(semester) || !idempotencyKey || units < 1) {
+    return NextResponse.json({ error: "학생, 학년도, 학기, 적용할 희월 점수를 확인해 주세요." }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -53,7 +54,8 @@ export async function POST(req: Request) {
   const praiseTotal = (entriesRes.data || []).filter((entry) => entry.kind === "praise").reduce((sum, entry) => sum + Number(entry.delta || 0), 0);
   const disciplineTotal = (entriesRes.data || []).filter((entry) => entry.kind !== "praise").reduce((sum, entry) => sum + Number(entry.delta || 0), 0);
 
-  if (praiseTotal < GRACE_UNIT_PRAISE_COST || disciplineTotal < 1) {
+  const praiseCost = GRACE_UNIT_PRAISE_COST * units;
+  if (praiseTotal < praiseCost || disciplineTotal < units) {
     return NextResponse.json({ error: "칭찬 점수 또는 훈계 점수가 부족하여 희월을 적용할 수 없습니다." }, { status: 400 });
   }
 
@@ -66,15 +68,15 @@ export async function POST(req: Request) {
     {
       batch_id: batchId, student_id: studentId, warning_date: null, academic_year: academicYear, semester, month,
       entry_type: "grace_conversion", change_type: "grace_adjustment", previous_value: 0, new_value: 0,
-      delta: -GRACE_UNIT_PRAISE_COST, kind: "praise",
-      parent_visible_reason: `희월 정산 - 칭찬 점수 ${GRACE_UNIT_PRAISE_COST}점을 희월 1점으로 전환`,
+      delta: -praiseCost, kind: "praise",
+      parent_visible_reason: `희월 정산 - 칭찬 점수 ${praiseCost}점을 희월 ${units}점으로 전환`,
       author_id: a.user.id,
     },
     {
       batch_id: batchId, student_id: studentId, warning_date: null, academic_year: academicYear, semester, month,
       entry_type: "grace_conversion", change_type: "grace_adjustment", previous_value: 0, new_value: 0,
-      delta: -1, kind: "discipline",
-      parent_visible_reason: "희월 정산 - 희월 1점 적용으로 훈계 점수 1점 차감",
+      delta: -units, kind: "discipline",
+      parent_visible_reason: `희월 정산 - 희월 ${units}점 적용으로 훈계 점수 ${units}점 차감`,
       author_id: a.user.id,
     },
   ];
@@ -84,9 +86,9 @@ export async function POST(req: Request) {
   const { data: linkRows } = await admin.from("parent_students").select("parent_id").eq("student_id", studentId);
   const recipientCount = new Set((linkRows || []).map((link) => link.parent_id)).size;
 
-  const remainingPraise = praiseTotal - GRACE_UNIT_PRAISE_COST;
-  const remainingDiscipline = disciplineTotal - 1;
-  const content = buildGraceConversionNotice({ studentName: studentRes.data.name, appliedUnits: 1, praiseTotal: remainingPraise, disciplineTotal: remainingDiscipline });
+  const remainingPraise = praiseTotal - praiseCost;
+  const remainingDiscipline = disciplineTotal - units;
+  const content = buildGraceConversionNotice({ studentName: studentRes.data.name, appliedUnits: units, praiseTotal: remainingPraise, disciplineTotal: remainingDiscipline });
 
   let notices = 0;
   const noticeRes = await admin.from("notices").insert({ type: "warning", title: content.title, body: content.body, target_scope: "student", requires_confirmation: true, created_by: a.user.id, published_at: new Date().toISOString(), source_type: "grace_conversion", source_id: batchId }).select("id,target_scope,target_grade").single();
@@ -119,7 +121,7 @@ export async function POST(req: Request) {
     praiseTotal: remainingPraise,
     disciplineTotal: remainingDiscipline,
     message: recipientCount
-      ? `${studentRes.data.name} 학생에게 희월 1점을 적용하고 학부모 알림을 전송했습니다.`
-      : `${studentRes.data.name} 학생에게 희월 1점을 적용했지만 연결된 학부모 계정이 없어 알림을 전송하지 못했습니다.`,
+      ? `${studentRes.data.name} 학생에게 희월 ${units}점을 적용하고 학부모 알림을 전송했습니다.`
+      : `${studentRes.data.name} 학생에게 희월 ${units}점을 적용했지만 연결된 학부모 계정이 없어 알림을 전송하지 못했습니다.`,
   });
 }
