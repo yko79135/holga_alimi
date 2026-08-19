@@ -67,7 +67,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentEditSaving, setStudentEditSaving] = useState(false);
 
   const [form, setForm] = useState({
-    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[] as string[], requiresConfirmation:false, customTypeLabel:"",
+    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[] as string[], customTypeLabel:"",
   });
   const [studentPickerGrade, setStudentPickerGrade] = useState("");
   const [studentPickerSearch, setStudentPickerSearch] = useState("");
@@ -206,7 +206,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       const res = await fetch("/api/notices/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, attachments }) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "게시 중 오류가 발생했습니다.");
-      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[], requiresConfirmation:false, customTypeLabel:"" });
+      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[], customTypeLabel:"" });
       setStudentPickerGrade("");
       setStudentPickerSearch("");
       setFiles([]);
@@ -447,7 +447,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
           <label>PDF 첨부 (최대 5개, 각 20MB 이하)</label><input type="file" accept="application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, MAX_NOTICE_ATTACHMENTS))} />
           {files.length > 0 && <div className="attachment-list">{files.map((file, index) => <div className="attachment-item" key={`${file.name}-${index}`}><span>📎 {file.name} · {formatBytes(file.size)}</span><button type="button" className="secondary" onClick={() => setFiles(files.filter((_, i) => i !== index))}>삭제</button></div>)}</div>}
-          <label className="switch-line"><input type="checkbox" checked={form.requiresConfirmation} onChange={(e) => setForm({...form,requiresConfirmation:e.target.checked})} /><span>학부모의 ‘확인 완료’ 응답을 요청합니다.</span></label>
           <button className="primary" disabled={loading}>{loading ? "발송 중..." : "알림 발송"}</button>
           {message && <p role="status" className="success-message">{message}</p>}
           {errorMessage && <p role="alert" className="form-error">{errorMessage}</p>}
@@ -476,7 +475,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                   </div>
                   <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
                 </div>
-                <p className="sent-preview">{notice.body}</p>
+                <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
                 <button type="button" className="secondary" onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
                 {isExpanded && (

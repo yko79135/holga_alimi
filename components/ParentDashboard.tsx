@@ -434,17 +434,15 @@ export default function ParentDashboard({ userId }: { userId: string }) {
               </div>
             )}
 
-            {selected.requires_confirmation && (
-              <button
-                className="primary"
-                onClick={confirmNotice}
-                disabled={Boolean(selected.acknowledgements?.[0]?.confirmed_at)}
-              >
-                {selected.acknowledgements?.[0]?.confirmed_at
-                  ? "확인 완료됨"
-                  : "내용을 확인했습니다"}
-              </button>
-            )}
+            <button
+              className="primary"
+              onClick={confirmNotice}
+              disabled={Boolean(selected.acknowledgements?.[0]?.confirmed_at)}
+            >
+              {selected.acknowledgements?.[0]?.confirmed_at
+                ? "확인 완료됨"
+                : "내용을 확인했습니다"}
+            </button>
 
             <div className="reply-box">
               <label>학교에 답변하기</label>
