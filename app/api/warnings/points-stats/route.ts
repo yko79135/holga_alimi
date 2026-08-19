@@ -33,11 +33,18 @@ export async function GET(req: Request) {
   const ids = (students || []).map((s: any) => s.id);
   let disciplineEntries: any[] = [];
   let praiseEntries: any[] = [];
+  const graceTotals = new Map<string, number>();
   if (ids.length) {
-    const { data, error } = await a.supabase.from("warning_entries").select("student_id,month,delta,kind").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
+    const { data, error } = await a.supabase.from("warning_entries").select("student_id,month,delta,kind,entry_type").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     disciplineEntries = (data || []).filter((entry: any) => entry.kind !== "praise");
     praiseEntries = (data || []).filter((entry: any) => entry.kind === "praise");
+    // 희월(grace conversion) is recorded as a paired praise-deduction + discipline-deduction entry;
+    // the discipline-side |delta| is exactly the number of 희월 units applied in that settlement.
+    for (const entry of data || []) {
+      if (entry.entry_type !== "grace_conversion" || entry.kind !== "discipline") continue;
+      graceTotals.set(entry.student_id, (graceTotals.get(entry.student_id) || 0) + Math.abs(Number(entry.delta || 0)));
+    }
   }
 
   const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
@@ -50,6 +57,7 @@ export async function GET(req: Request) {
     parentCount: Array.isArray(student.parent_students) ? student.parent_students.length : 0,
     discipline: disciplineSummaries[student.id],
     praise: praiseSummaries[student.id],
+    graceTotal: graceTotals.get(student.id) || 0,
   }));
 
   return NextResponse.json({ students: rows, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
