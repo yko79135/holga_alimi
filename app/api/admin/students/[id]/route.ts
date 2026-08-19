@@ -24,6 +24,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   catch (error) { if (error instanceof Error && error.message === "STUDENT_NOT_FOUND") return adminJsonError("학생을 찾을 수 없습니다.", 404); return adminJsonError("삭제 영향을 확인하지 못했습니다.", 500); }
 }
 
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin(); if ("error" in auth) return auth.error;
+  const { id } = await params; const studentId = String(id || "").trim();
+  if (!validUuid(studentId)) return adminJsonError("학생 ID를 확인해주세요.", 400);
+  const body = await request.json().catch(() => ({}));
+  const name = String(body.name || "").trim();
+  const grade = String(body.grade || "").trim();
+  if (!name || !grade) return adminJsonError("이름과 학년을 입력해주세요.", 400);
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("students").update({ name, grade }).eq("id", studentId).select("id,name,grade,homeroom,active").single();
+  if (error || !data) return adminJsonError("학생을 찾을 수 없습니다.", 404);
+  return NextResponse.json({ student: data });
+}
+
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin(); if ("error" in auth) return auth.error;
   const { id } = await params; const studentId = String(id || "").trim();

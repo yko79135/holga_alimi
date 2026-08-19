@@ -10,6 +10,11 @@ export const NOTICE_TYPE_LABELS: Record<string, string> = {
 
 export const CUSTOM_NOTICE_TYPE = "custom";
 
+/** warning/attendance/praise notices are generated automatically by the dedicated
+ * discipline/praise/attendance flows, so they're excluded from the manual compose dropdown.
+ * NOTICE_TYPE_LABELS keeps them for rendering historical notices of those types. */
+export const COMPOSABLE_NOTICE_TYPES: string[] = ["newsletter", "guidance", "consultation", "urgent"];
+
 /** "직접 입력" notices carry their own free-text type label instead of a fixed one. */
 export function noticeTypeLabel(notice: { type: string; custom_type_label?: string | null }) {
   if (notice.type === CUSTOM_NOTICE_TYPE) return notice.custom_type_label?.trim() || "직접 입력";

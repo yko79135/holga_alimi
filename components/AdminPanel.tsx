@@ -436,6 +436,17 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         </div>
       </section>
 
+      <section className="content-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">DATA BACKUP</p>
+            <h2>데이터 백업</h2>
+          </div>
+        </div>
+        <p className="muted">학생, 학부모 연결, 공지, 훈계·칭찬 점수, 출결 내역 등 핵심 데이터를 JSON 파일 하나로 내려받습니다. 공지에 첨부된 PDF 원본은 포함되지 않고, 첨부파일 정보(파일명 등)만 포함됩니다. 민감한 개인정보가 포함되므로 다운로드한 파일은 안전하게 보관하세요.</p>
+        <a className="secondary" href="/api/admin/data-export">백업 파일 다운로드</a>
+      </section>
+
       {deleteTarget && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
           <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title">

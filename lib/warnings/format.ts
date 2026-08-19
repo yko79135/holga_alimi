@@ -25,7 +25,9 @@ export function buildWarningNotice(studentName: string, changes: WarningCellChan
     `이번 달 ${label} 합계: ${monthlyTotal}점`,
   ];
   if (reasons) lines.push("", onlyCorrection ? "정정 사유" : "사유", reasons);
-  lines.push("", isPraise ? "가정에서도 함께 축하하고 격려해 주세요." : "가정에서도 따뜻한 관심과 격려 부탁드립니다.", "자세한 내용은 포털에서 확인해 주세요.");
+  lines.push("");
+  if (isPraise) lines.push("가정에서도 함께 축하하고 격려해 주세요.");
+  lines.push("자세한 내용은 포털에서 확인해 주세요.");
   return { title, body: lines.join("\n") };
 }
 
@@ -44,7 +46,27 @@ export function buildPointNotice(params: { kind: PointKind; studentName: string;
   lines.push(`${isPraise ? "부여 점수" : "차감 점수"}: ${points}점`);
   if (detail) lines.push("", "세부 내용", detail);
   lines.push("", `이번 달 ${isPraise ? "칭찬" : "훈계"} 점수 합계: ${monthlyTotal}점`, "");
-  lines.push(isPraise ? "가정에서도 함께 축하하고 격려해 주세요." : "가정에서도 따뜻한 관심과 격려 부탁드립니다.");
+  if (isPraise) lines.push("가정에서도 함께 축하하고 격려해 주세요.");
   lines.push("자세한 내용은 포털에서 확인해 주세요.");
+  return { title, body: lines.join("\n") };
+}
+
+/** 희월 settlement: every 20 accumulated praise points converts into 1 unit that cancels 1
+ * discipline point (see app/api/warnings/grace-settlement/route.ts for the conversion math). */
+export function buildGraceConversionNotice(params: { studentName: string; appliedUnits: number; praiseTotal: number; disciplineTotal: number }) {
+  const { studentName, appliedUnits, praiseTotal, disciplineTotal } = params;
+  const praiseUsed = appliedUnits * 20;
+  const title = "희월 점수 안내";
+  const lines = [
+    `안녕하세요, ${studentName} 학생과 관련하여 안내드립니다.`,
+    "",
+    `그동안 쌓인 칭찬 점수 ${praiseUsed}점이 은혜의 희월 ${appliedUnits}점으로 전환되어, 훈계 점수 ${appliedUnits}점이 차감되었습니다.`,
+    "",
+    `현재 칭찬 점수 합계: ${praiseTotal}점`,
+    `현재 훈계 점수 합계: ${disciplineTotal}점`,
+    "",
+    "가정에서도 함께 축하하고 격려해 주세요.",
+    "자세한 내용은 포털에서 확인해 주세요.",
+  ];
   return { title, body: lines.join("\n") };
 }

@@ -88,7 +88,9 @@ export async function POST(req: Request) {
   if (existing.data) return NextResponse.json({ success: true, idempotent: true, message: "이미 처리된 요청입니다.", batchId: existing.data.id });
 
   const { year, semester, month, dateOnly } = currentTerm();
-  const delta = kind === "discipline" ? -points : points;
+  // delta must equal new_value - previous_value (0 here), matching the grid-based "daily" entries'
+  // invariant -- discipline points accumulate upward just like praise points, never negative.
+  const delta = points;
 
   const batchRes = await supabase.from("warning_change_batches").insert({ idempotency_key: idempotencyKey, academic_year: year, semester, month, author_id: user.id }).select("id").single();
   if (batchRes.error || !batchRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_change_batches", errorCode: batchRes.error?.code, errorMessage: batchRes.error?.message });
@@ -180,7 +182,7 @@ export async function POST(req: Request) {
     after(async () => {
       const admin = createAdminClient();
       try {
-        const push = await sendNoticePushes({ id: noticeId, target_scope: "student", target_grade: null });
+        const push = await sendNoticePushes({ id: noticeId, target_scope: "student", target_grade: null, title: content.title, body: content.body, created_by: user.id });
         const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", studentId);
         if (error) console.error("warning-grant-push-count-update-failed", { batchId, noticeId, code: error.code, message: error.message });
       } catch (error) {

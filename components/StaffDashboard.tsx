@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import AdminPanel from "@/components/AdminPanel";
@@ -10,14 +11,14 @@ import PointStats from "@/components/warnings/PointStats";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
 import AttendanceStats from "@/components/attendance/AttendanceStats";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
-import { CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
+import { COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
 type ParentLink = { parentId: string; fullName: string; email: string; linkedStudents: Array<{ id: string; name: string; grade: string }> };
 type Profile = { id: string; full_name: string; email: string; role: string };
 type Notice = {
   id: string; type: string; title: string; body: string; custom_type_label: string | null; target_scope: string; target_grade: string | null;
-  requires_confirmation: boolean; published_at: string;
+  requires_confirmation: boolean; published_at: string; created_by: string;
   notice_students?: Array<{ students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null }>;
   acknowledgements?: Array<{ read_at: string | null; confirmed_at: string | null; parent_reply: string | null; profiles?: { full_name: string } | null }>;
   notice_attachments?: Attachment[];
@@ -28,6 +29,7 @@ type Feedback = { type: "success" | "error"; text: string };
 type StudentPreview = { name: string; grade: string; parentLinkCount: number; individualNoticeCount: number };
 
 export default function StaffDashboard({ userId, role, tab, onTabChange }: { userId: string; role: string; tab: string; onTabChange: (tab: string) => void }) {
+  const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -58,10 +60,17 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentFormOpen, setStudentFormOpen] = useState(false);
+  const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [editStudentName, setEditStudentName] = useState("");
+  const [editStudentGrade, setEditStudentGrade] = useState("");
+  const [studentEditSaving, setStudentEditSaving] = useState(false);
 
   const [form, setForm] = useState({
-    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false, customTypeLabel:"",
+    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[] as string[], requiresConfirmation:false, customTypeLabel:"",
   });
+  const [studentPickerGrade, setStudentPickerGrade] = useState("");
+  const [studentPickerSearch, setStudentPickerSearch] = useState("");
 
   const sortStudents = (items: Student[]) => [...items].sort((a, b) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name));
 
@@ -73,7 +82,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
   const loadNotices = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_grade,requires_confirmation,published_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
+    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_grade,requires_confirmation,published_at,created_by,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
     setNotices((data || []) as unknown as Notice[]);
   }, []);
 
@@ -115,6 +124,10 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { void loadStudents(); }, [loadStudents]);
   useEffect(() => { if (tab === "compose") void loadStudents(); }, [tab, loadStudents]);
   useEffect(() => { if (tab === "notices") void loadNotices(); }, [tab, loadNotices]);
+  useEffect(() => {
+    const noticeId = searchParams.get("notice");
+    if (noticeId) setExpandedNoticeId(noticeId);
+  }, [searchParams]);
   useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); void loadParentRoleIds(); } }, [tab, loadStudents, loadProfiles, loadParentLinks, loadParentRoleIds]);
   useLiveRefresh({
     channelName: `staff-dashboard-${userId}-${role}`,
@@ -165,7 +178,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { if (studentSearch.trim()) setExpandedGrades((current) => Object.fromEntries(Object.keys(groupedStudents).map((g) => [g, true]))); }, [studentSearch, groupedStudents]);
 
   const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
-  const confirmedTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
+  const visibleNotices = onlyMine ? notices.filter((notice) => notice.created_by === userId) : notices;
+  const confirmedTotal = visibleNotices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
   const replyTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.parent_reply).length, 0);
 
   async function sendNotice(event: FormEvent) {
@@ -173,7 +187,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     setMessage("");
     setErrorMessage("");
     if (form.targetScope === "grade" && !form.targetGrade) return setErrorMessage("대상 학년을 선택해주세요.");
-    if (form.targetScope === "student" && !form.studentId) return setErrorMessage("대상 학생을 선택해주세요.");
+    if (form.targetScope === "student" && !form.studentIds.length) return setErrorMessage("대상 학생을 선택해주세요.");
     if (form.type === CUSTOM_NOTICE_TYPE && !form.customTypeLabel.trim()) return setErrorMessage("알림 종류를 직접 입력해주세요.");
     if (files.length > MAX_NOTICE_ATTACHMENTS) return setErrorMessage("PDF는 최대 5개까지 첨부할 수 있습니다.");
     setLoading(true);
@@ -192,7 +206,9 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       const res = await fetch("/api/notices/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, attachments }) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "게시 중 오류가 발생했습니다.");
-      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentId:"", requiresConfirmation:false, customTypeLabel:"" });
+      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[], requiresConfirmation:false, customTypeLabel:"" });
+      setStudentPickerGrade("");
+      setStudentPickerSearch("");
       setFiles([]);
       setMessage(`${result.message} 앱 알림 ${result.push?.sent || 0}건 전송 · 알림 미등록 사용자 ${result.push?.unsubscribed || 0}명 · 실패 ${result.push?.failed || 0}건`);
       await load();
@@ -305,6 +321,24 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     } finally { setDeleteSubmitting(false); }
   }
 
+  async function saveStudentEdit(studentId: string) {
+    const name = editStudentName.trim();
+    const grade = editStudentGrade.trim();
+    if (!name || !grade) { setErrorMessage("이름과 학년을 입력해주세요."); return; }
+    setStudentEditSaving(true); setErrorMessage(""); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(studentId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, grade }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학생 정보를 수정하지 못했습니다.");
+      setStudents((current) => sortStudents(current.map((student) => student.id === studentId ? { ...student, name: result.student.name, grade: result.student.grade } : student)));
+      setMessage("학생 정보를 수정했습니다.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "학생 정보를 수정하지 못했습니다.");
+    } finally {
+      setStudentEditSaving(false);
+    }
+  }
+
   async function linkParent(studentId: string, parentId: string) {
     if (!parentId || linkingStudentId) return;
     setLinkingStudentId(studentId); setErrorMessage(""); setMessage("");
@@ -350,7 +384,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         {role === "admin" && <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>}
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
-        <button className={tab === "warnings" ? "active" : ""} onClick={() => onTabChange("warnings")}>정정</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
@@ -371,7 +404,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <div>
               <label>알림 종류</label>
               <select value={form.type} onChange={(e) => setForm({...form,type:e.target.value})}>
-                {Object.entries(NOTICE_TYPE_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+                {COMPOSABLE_NOTICE_TYPES.map((value) => <option key={value} value={value}>{NOTICE_TYPE_LABELS[value]}</option>)}
                 <option value={CUSTOM_NOTICE_TYPE}>직접 입력</option>
               </select>
             </div>
@@ -380,9 +413,32 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
               <label>세부 대상</label>
               {form.targetScope === "school" && <input value="모든 학부모" disabled />}
               {form.targetScope === "grade" && <select value={form.targetGrade} onChange={(e) => setForm({...form,targetGrade:e.target.value})}><option value="">학년 선택</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select>}
-              {form.targetScope === "student" && <select value={form.studentId} onChange={(e) => setForm({...form,studentId:e.target.value})}><option value="">학생 선택</option>{students.map((student) => <option key={student.id} value={student.id}>{student.grade} · {student.name}</option>)}</select>}
+              {form.targetScope === "student" && <input value={form.studentIds.length ? `${form.studentIds.length}명 선택됨` : "아래에서 학생 선택"} disabled />}
             </div>
           </div>
+          {form.targetScope === "student" && (
+            <div className="student-picker">
+              <div className="student-picker-toolbar">
+                <label>학년 필터<select value={studentPickerGrade} onChange={(e) => setStudentPickerGrade(e.target.value)}><option value="">전체 학년</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select></label>
+                <label>학생 검색<input value={studentPickerSearch} onChange={(e) => setStudentPickerSearch(e.target.value)} placeholder="이름 검색" /></label>
+                <span className="pill">{form.studentIds.length}명 선택됨</span>
+              </div>
+              <div className="student-picker-list">
+                {students
+                  .filter((student) => (!studentPickerGrade || student.grade === studentPickerGrade) && (!studentPickerSearch.trim() || student.name.toLowerCase().includes(studentPickerSearch.trim().toLowerCase())))
+                  .map((student) => {
+                    const checked = form.studentIds.includes(student.id);
+                    return (
+                      <label className="student-picker-item" key={student.id}>
+                        <input type="checkbox" checked={checked} onChange={() => setForm((current) => ({ ...current, studentIds: checked ? current.studentIds.filter((id) => id !== student.id) : [...current.studentIds, student.id] }))} />
+                        <span>{student.grade} · {student.name}</span>
+                      </label>
+                    );
+                  })}
+                {!students.length && <p className="muted">등록된 학생이 없습니다.</p>}
+              </div>
+            </div>
+          )}
           {form.type === CUSTOM_NOTICE_TYPE && (
             <><label>알림 종류 직접 입력</label><input value={form.customTypeLabel} onChange={(e) => setForm({...form,customTypeLabel:e.target.value})} required placeholder="예: 체험학습 안내" /></>
           )}
@@ -403,37 +459,58 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           <div className="section-heading">
             <div><p className="eyebrow">SENT MESSAGES</p><h2>발송 및 응답 기록</h2></div>
             <div className="topbar-actions">
+              <label className="switch-line"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /><span>내가 발송한 것만 보기</span></label>
               {selectedNoticeIds.length > 0 && <button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setBulkDeleteTargets(notices.filter((notice) => selectedNoticeIds.includes(notice.id))); }}>선택 삭제 ({selectedNoticeIds.length})</button>}
               <span className="pill">확인 완료 {confirmedTotal}건</span>
             </div>
           </div>
           <div className="sent-list">
-            {notices.map((notice) => {
-              const replies = (notice.acknowledgements || []).filter((ack) => ack.parent_reply);
+            {visibleNotices.map((notice) => {
+              const acks = notice.acknowledgements || [];
+              const isExpanded = expandedNoticeId === notice.id;
               return <article className="sent-card" key={notice.id}>
                 <div className="sent-top">
-                  <div className="sent-top-main">
-                    <label className="notice-select"><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
+                  <div className="sent-top-main" role="button" tabIndex={0} aria-expanded={isExpanded} onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)} onKeyDown={(e) => { if (e.key === "Enter") setExpandedNoticeId(isExpanded ? null : notice.id); }}>
+                    <label className="notice-select" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
                     <div><span className={`tag ${notice.type}`}>{noticeTypeLabel(notice)}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div>
                   </div>
-                  <div className="ack-summary"><b>{(notice.acknowledgements || []).filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
+                  <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
                 </div>
                 <p className="sent-preview">{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
+                <button type="button" className="secondary" onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
+                {isExpanded && (
+                  <div className="notice-detail-list">
+                    {acks.length ? acks.map((ack, index) => (
+                      <div className="notice-detail-row" key={index}>
+                        <strong>{ack.profiles?.full_name || "이름 없음"}</strong>
+                        <span>{ack.confirmed_at ? `확인 완료 · ${new Date(ack.confirmed_at).toLocaleString("ko-KR")}` : ack.read_at ? `읽음 · ${new Date(ack.read_at).toLocaleString("ko-KR")}` : "미확인"}</span>
+                        {ack.parent_reply && <p>“{ack.parent_reply}”</p>}
+                      </div>
+                    )) : <p className="muted">아직 확인한 학부모가 없습니다.</p>}
+                  </div>
+                )}
                 <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>
-                {replies.length > 0 && <div className="reply-log"><strong>학부모 답변</strong>{replies.map((ack,index) => <p key={index}>“{ack.parent_reply}”</p>)}</div>}
               </article>;
             })}
-            {!notices.length && <div className="empty-state">아직 발송한 알림이 없습니다.</div>}
+            {!visibleNotices.length && <div className="empty-state">{onlyMine ? "내가 발송한 알림이 없습니다." : "아직 발송한 알림이 없습니다."}</div>}
           </div>
         </section>
       )}
 
-      {tab === "discipline" && <PointGrantForm role={role} kind="discipline" students={students} />}
+      {tab === "discipline" && (
+        <div className="stacked-panels">
+          <PointGrantForm role={role} kind="discipline" students={students} />
+          <WarningManager role={role} kind="discipline" />
+        </div>
+      )}
 
-      {tab === "praise" && <PointGrantForm role={role} kind="praise" students={students} />}
-
-      {tab === "warnings" && <WarningManager role={role} />}
+      {tab === "praise" && (
+        <div className="stacked-panels">
+          <PointGrantForm role={role} kind="praise" students={students} />
+          <WarningManager role={role} kind="praise" />
+        </div>
+      )}
 
       {tab === "attendance" && <AttendanceManager role={role} />}
 
@@ -465,7 +542,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
               const missing = gradeStudents.filter((student) => !(parentLinks[student.id] || []).length).length;
               return <section className="student-grade-section" key={gradeName}><button type="button" className="student-grade-header" aria-expanded={isOpen} onClick={() => setExpandedGrades((current) => ({ ...current, [gradeName]: !isOpen }))}><strong>{gradeName}</strong><span>{gradeStudents.length}명 · 학부모 미연결 {missing}명</span><em>{isOpen ? "접기" : "펼치기"}</em></button>{isOpen && <div className="compact-student-list">{gradeStudents.map((student) => {
                 const linked = parentLinks[student.id] || []; const busy = linkingStudentId === student.id; const query = (parentSearch[student.id] || "").trim().toLowerCase(); const linkedIds = new Set(linked.map((parent) => parent.parentId)); const candidates = query ? parentProfiles.filter((parent) => !linkedIds.has(parent.id) && `${parent.full_name} ${parent.email}`.toLowerCase().includes(query)).slice(0, 8) : []; const editing = editingStudentId === student.id;
-                return <article className="compact-student-card" key={student.id}><div className="compact-student-main"><span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span><div><h3>{student.name}</h3><p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p><small>{linked.length ? linked.map((p) => p.fullName || p.email).join(", ") : "연결된 학부모 없음"}</small></div></div><div className="compact-student-status"><span className="pill">{linked.length ? `학부모 ${linked.length}명` : "학부모 미연결"}</span><button type="button" className="secondary" onClick={() => { setEditingStudentId(editing ? null : student.id); if (!editing) void loadStudentParents(student.id); }}>{editing ? "닫기" : "수정"}</button>{role === "admin" && <button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>삭제</button>}</div>{editing && role === "admin" && <div className="focused-student-editor"><section><div className="section-label-row"><span>연결된 학부모</span><strong>{linked.length}명</strong></div>{linked.length ? linked.map((parent) => <div className="linked-parent-row" key={parent.parentId}><div className="linked-parent-details"><strong>{parent.fullName || parent.email}</strong><span>{parent.email}</span></div><button type="button" className="unlink-button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button></div>) : <div className="linked-parent-empty"><strong>학부모 미연결</strong><span>아래 검색으로 기존 학부모 계정을 연결하세요.</span></div>}</section><section className="parent-link-panel"><div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label></div><input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="parent-search-results">{candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}><span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em></button>)}{!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 연결된 계정입니다.</p>}</div>}</section></div>}</article>;
+                return <article className="compact-student-card" key={student.id}><div className="compact-student-main"><span className="student-avatar" aria-hidden="true">{student.name.slice(0, 1)}</span><div><h3>{student.name}</h3><p>{student.grade}{student.homeroom ? ` · ${student.homeroom}` : ""}</p><small>{linked.length ? linked.map((p) => p.fullName || p.email).join(", ") : "연결된 학부모 없음"}</small></div></div><div className="compact-student-status"><span className="pill">{linked.length ? `학부모 ${linked.length}명` : "학부모 미연결"}</span><button type="button" className="secondary" onClick={() => { setEditingStudentId(editing ? null : student.id); if (!editing) { setEditStudentName(student.name); setEditStudentGrade(student.grade); void loadStudentParents(student.id); } }}>{editing ? "닫기" : "수정"}</button>{role === "admin" && <button type="button" className="danger-outline-button" onClick={() => openStudentDelete(student)}>삭제</button>}</div>{editing && role === "admin" && <div className="focused-student-editor"><section className="student-edit-panel"><div className="section-label-row"><span>학생 정보</span></div><label>이름</label><input value={editStudentName} onChange={(e) => setEditStudentName(e.target.value)} /><label>학년</label><input value={editStudentGrade} onChange={(e) => setEditStudentGrade(e.target.value)} placeholder="G7E" /><button type="button" className="primary" onClick={() => saveStudentEdit(student.id)} disabled={studentEditSaving}>{studentEditSaving ? "저장 중..." : "학생 정보 저장"}</button></section><section><div className="section-label-row"><span>연결된 학부모</span><strong>{linked.length}명</strong></div>{linked.length ? linked.map((parent) => <div className="linked-parent-row" key={parent.parentId}><div className="linked-parent-details"><strong>{parent.fullName || parent.email}</strong><span>{parent.email}</span></div><button type="button" className="unlink-button" onClick={() => unlinkParent(student.id, parent.parentId)} disabled={busy}>{busy ? "처리 중" : "연결 해제"}</button></div>) : <div className="linked-parent-empty"><strong>학부모 미연결</strong><span>아래 검색으로 기존 학부모 계정을 연결하세요.</span></div>}</section><section className="parent-link-panel"><div className="parent-link-panel__top"><label htmlFor={`parent-search-${student.id}`}>학부모 계정 검색</label></div><input id={`parent-search-${student.id}`} className="parent-search-input" placeholder="이름 또는 이메일로 검색" value={parentSearch[student.id] || ""} onChange={(e) => setParentSearch((current) => ({ ...current, [student.id]: e.target.value }))} />{query && <div className="parent-search-results">{candidates.map((parent) => <button type="button" className="parent-result" key={parent.id} onClick={() => linkParent(student.id, parent.id)} disabled={busy}><span><strong>{parent.full_name || parent.email}</strong><small>{parent.email}</small></span><em>선택한 계정 연결</em></button>)}{!candidates.length && <p className="link-status">일치하는 학부모 계정이 없거나 이미 연결된 계정입니다.</p>}</div>}</section></div>}</article>;
               })}</div>}</section>;
             })}</div>
             {!filteredStudents.length && <div className="empty-state">검색 조건에 맞는 학생이 없습니다.</div>}
