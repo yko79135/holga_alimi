@@ -650,6 +650,10 @@ h3 {
   grid-template-columns: minmax(0, 1.25fr) minmax(270px, 0.75fr);
   gap: 18px;
 }
+.stacked-panels {
+  display: grid;
+  gap: 18px;
+}
 .info-panel {
   background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
   color: var(--white);

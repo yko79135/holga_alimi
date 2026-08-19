@@ -18,7 +18,7 @@ type ParentLink = { parentId: string; fullName: string; email: string; linkedStu
 type Profile = { id: string; full_name: string; email: string; role: string };
 type Notice = {
   id: string; type: string; title: string; body: string; custom_type_label: string | null; target_scope: string; target_grade: string | null;
-  requires_confirmation: boolean; published_at: string;
+  requires_confirmation: boolean; published_at: string; created_by: string;
   notice_students?: Array<{ students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null }>;
   acknowledgements?: Array<{ read_at: string | null; confirmed_at: string | null; parent_reply: string | null; profiles?: { full_name: string } | null }>;
   notice_attachments?: Attachment[];
@@ -61,6 +61,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentFormOpen, setStudentFormOpen] = useState(false);
   const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
+  const [onlyMine, setOnlyMine] = useState(false);
   const [editStudentName, setEditStudentName] = useState("");
   const [editStudentGrade, setEditStudentGrade] = useState("");
   const [studentEditSaving, setStudentEditSaving] = useState(false);
@@ -81,7 +82,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
   const loadNotices = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_grade,requires_confirmation,published_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
+    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_grade,requires_confirmation,published_at,created_by,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
     setNotices((data || []) as unknown as Notice[]);
   }, []);
 
@@ -177,7 +178,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { if (studentSearch.trim()) setExpandedGrades((current) => Object.fromEntries(Object.keys(groupedStudents).map((g) => [g, true]))); }, [studentSearch, groupedStudents]);
 
   const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
-  const confirmedTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
+  const visibleNotices = onlyMine ? notices.filter((notice) => notice.created_by === userId) : notices;
+  const confirmedTotal = visibleNotices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
   const replyTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.parent_reply).length, 0);
 
   async function sendNotice(event: FormEvent) {
@@ -382,7 +384,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         {role === "admin" && <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>}
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
-        <button className={tab === "warnings" ? "active" : ""} onClick={() => onTabChange("warnings")}>정정</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
@@ -458,12 +459,13 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           <div className="section-heading">
             <div><p className="eyebrow">SENT MESSAGES</p><h2>발송 및 응답 기록</h2></div>
             <div className="topbar-actions">
+              <label className="switch-line"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /><span>내가 발송한 것만 보기</span></label>
               {selectedNoticeIds.length > 0 && <button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setBulkDeleteTargets(notices.filter((notice) => selectedNoticeIds.includes(notice.id))); }}>선택 삭제 ({selectedNoticeIds.length})</button>}
               <span className="pill">확인 완료 {confirmedTotal}건</span>
             </div>
           </div>
           <div className="sent-list">
-            {notices.map((notice) => {
+            {visibleNotices.map((notice) => {
               const acks = notice.acknowledgements || [];
               const isExpanded = expandedNoticeId === notice.id;
               return <article className="sent-card" key={notice.id}>
@@ -491,16 +493,24 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                 <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>
               </article>;
             })}
-            {!notices.length && <div className="empty-state">아직 발송한 알림이 없습니다.</div>}
+            {!visibleNotices.length && <div className="empty-state">{onlyMine ? "내가 발송한 알림이 없습니다." : "아직 발송한 알림이 없습니다."}</div>}
           </div>
         </section>
       )}
 
-      {tab === "discipline" && <PointGrantForm role={role} kind="discipline" students={students} />}
+      {tab === "discipline" && (
+        <div className="stacked-panels">
+          <PointGrantForm role={role} kind="discipline" students={students} />
+          <WarningManager role={role} kind="discipline" />
+        </div>
+      )}
 
-      {tab === "praise" && <PointGrantForm role={role} kind="praise" students={students} />}
-
-      {tab === "warnings" && <WarningManager role={role} />}
+      {tab === "praise" && (
+        <div className="stacked-panels">
+          <PointGrantForm role={role} kind="praise" students={students} />
+          <WarningManager role={role} kind="praise" />
+        </div>
+      )}
 
       {tab === "attendance" && <AttendanceManager role={role} />}
 

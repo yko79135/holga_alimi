@@ -12,8 +12,8 @@ const KIND_META: Record<PointKind, { eyebrow: string; label: string; graceLabel:
   praise: { eyebrow: "PRAISE CORRECTION", label: "칭찬 점수", graceLabel: "칭찬 조정", totalLabel: "이번달 칭찬 점수" },
 };
 
-export default function WarningManager({ role }: { role: string }) {
-  const [kind, setKind] = useState<PointKind>("discipline");
+export default function WarningManager({ role, kind: fixedKind }: { role: string; kind?: PointKind }) {
+  const [kind, setKind] = useState<PointKind>(fixedKind || "discipline");
   const meta = KIND_META[kind];
   const [year, setYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState(now.getMonth() < 7 ? 1 : 2);
@@ -156,10 +156,12 @@ export default function WarningManager({ role }: { role: string }) {
         <span className="pill">미저장 {dirty.length}건</span>
       </div>
 
-      <div className="filter-row" role="tablist" aria-label="정정 대상 전환">
-        <button type="button" role="tab" aria-selected={kind === "discipline"} className={kind === "discipline" ? "filter active" : "filter"} onClick={() => switchKind("discipline")}>훈계 점수</button>
-        <button type="button" role="tab" aria-selected={kind === "praise"} className={kind === "praise" ? "filter active" : "filter"} onClick={() => switchKind("praise")}>칭찬 점수</button>
-      </div>
+      {!fixedKind && (
+        <div className="filter-row" role="tablist" aria-label="정정 대상 전환">
+          <button type="button" role="tab" aria-selected={kind === "discipline"} className={kind === "discipline" ? "filter active" : "filter"} onClick={() => switchKind("discipline")}>훈계 점수</button>
+          <button type="button" role="tab" aria-selected={kind === "praise"} className={kind === "praise" ? "filter active" : "filter"} onClick={() => switchKind("praise")}>칭찬 점수</button>
+        </div>
+      )}
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
