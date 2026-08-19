@@ -2,11 +2,19 @@
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+/** Only follow "next" when it's a same-origin relative path, to avoid an open redirect via a
+ * crafted ?next= value, and never loop back into /login itself. */
+function safeNextPath(next: string | null): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) return null;
+  return next;
+}
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +38,7 @@ export default function LoginForm() {
         return;
       }
 
-      router.replace("/dashboard");
+      router.replace(safeNextPath(searchParams.get("next")) || "/dashboard");
       return;
     } catch (error) {
       setError(

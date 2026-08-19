@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import LoginForm from "@/components/LoginForm";
 
 export default function LoginPage() {
@@ -12,7 +13,9 @@ export default function LoginPage() {
         </h2>
         <p>가정통신문, 학교 공지, 개별 훈계 점수 공지, 등</p>
       </div>
-      <LoginForm />
+      <Suspense fallback={null}>
+        <LoginForm />
+      </Suspense>
     </main>
   );
 }
