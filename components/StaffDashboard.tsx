@@ -60,7 +60,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentFormOpen, setStudentFormOpen] = useState(false);
-  const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null);
+  const [expandedNoticeIds, setExpandedNoticeIds] = useState<Record<string, boolean>>({});
   const [onlyMine, setOnlyMine] = useState(false);
   const [editStudentName, setEditStudentName] = useState("");
   const [editStudentGrade, setEditStudentGrade] = useState("");
@@ -126,7 +126,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { if (tab === "notices") void loadNotices(); }, [tab, loadNotices]);
   useEffect(() => {
     const noticeId = searchParams.get("notice");
-    if (noticeId) setExpandedNoticeId(noticeId);
+    if (noticeId) setExpandedNoticeIds((current) => ({ ...current, [noticeId]: true }));
   }, [searchParams]);
   useEffect(() => { if (tab === "students") { void loadStudents(); void loadProfiles(); void loadParentLinks(); void loadParentRoleIds(); } }, [tab, loadStudents, loadProfiles, loadParentLinks, loadParentRoleIds]);
   useLiveRefresh({
@@ -180,7 +180,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
   const visibleNotices = onlyMine ? notices.filter((notice) => notice.created_by === userId) : notices;
   const confirmedTotal = visibleNotices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
-  const replyTotal = notices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.parent_reply).length, 0);
 
   async function sendNotice(event: FormEvent) {
     event.preventDefault();
@@ -390,13 +389,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
       </nav>
 
-      <div className="stats-row">
-        <div className="stat-card"><span>등록 학생</span><strong>{students.length}</strong></div>
-        <div className="stat-card"><span>발송 알림</span><strong>{notices.length}</strong></div>
-        <div className="stat-card"><span>학부모 계정</span><strong>{parentProfiles.length}</strong></div>
-        <div className="stat-card"><span>학부모 답변</span><strong>{replyTotal}</strong></div>
-      </div>
-
       {tab === "compose" && (
         <form className="form-panel large" onSubmit={sendNotice}>
           <div className="section-heading"><div><p className="eyebrow">NEW MESSAGE</p><h2>학부모 알림 작성</h2></div></div>
@@ -466,10 +458,11 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           <div className="sent-list">
             {visibleNotices.map((notice) => {
               const acks = notice.acknowledgements || [];
-              const isExpanded = expandedNoticeId === notice.id;
+              const isExpanded = !!expandedNoticeIds[notice.id];
+              const toggleExpanded = () => setExpandedNoticeIds((current) => ({ ...current, [notice.id]: !isExpanded }));
               return <article className="sent-card" key={notice.id}>
                 <div className="sent-top">
-                  <div className="sent-top-main" role="button" tabIndex={0} aria-expanded={isExpanded} onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)} onKeyDown={(e) => { if (e.key === "Enter") setExpandedNoticeId(isExpanded ? null : notice.id); }}>
+                  <div className="sent-top-main" role="button" tabIndex={0} aria-expanded={isExpanded} onClick={toggleExpanded} onKeyDown={(e) => { if (e.key === "Enter") toggleExpanded(); }}>
                     <label className="notice-select" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
                     <div><span className={`tag ${notice.type}`}>{noticeTypeLabel(notice)}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div>
                   </div>
@@ -477,7 +470,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                 </div>
                 <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
-                <button type="button" className="secondary" onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
+                <button type="button" className="secondary" onClick={toggleExpanded}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
                 {isExpanded && (
                   <div className="notice-detail-list">
                     {acks.length ? acks.map((ack, index) => (

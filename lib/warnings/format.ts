@@ -65,7 +65,6 @@ export function buildGraceConversionNotice(params: { studentName: string; applie
     `현재 칭찬 점수 합계: ${praiseTotal}점`,
     `현재 훈계 점수 합계: ${disciplineTotal}점`,
     "",
-    "가정에서도 함께 축하하고 격려해 주세요.",
     "자세한 내용은 포털에서 확인해 주세요.",
   ];
   return { title, body: lines.join("\n") };
