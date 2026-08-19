@@ -745,6 +745,10 @@ h3 {
   max-height: 80px;
   overflow: hidden;
 }
+.sent-preview.expanded {
+  max-height: none;
+  overflow: visible;
+}
 .ack-summary {
   text-align: center;
   background: var(--mint-100);
@@ -1238,6 +1242,13 @@ h3 {
 .total-days-input {
   width: 56px;
   text-align: center;
+}
+.grace-apply {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--cream);
 }
 .point-history {
   margin-top: 16px;

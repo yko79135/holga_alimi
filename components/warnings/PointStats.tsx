@@ -2,7 +2,6 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import type { MonthlyWarningBreakdown, WarningStudentSummary } from "@/lib/warnings/stats";
 
 type AuditEntry = {
@@ -29,6 +28,7 @@ type StatsStudent = {
   graceTotal: number;
 };
 
+const GRACE_UNIT_PRAISE_COST = 20;
 const now = new Date();
 
 function mergeMonthly(discipline: MonthlyWarningBreakdown[], praise: MonthlyWarningBreakdown[]) {
@@ -52,31 +52,8 @@ export default function PointStats({ role }: { role: string }) {
   const [entriesByStudent, setEntriesByStudent] = useState<Record<string, AuditEntry[]>>({});
   const [entriesLoadingId, setEntriesLoadingId] = useState<string | null>(null);
   const [entriesError, setEntriesError] = useState("");
-  const [settleOpen, setSettleOpen] = useState(false);
-  const [settling, setSettling] = useState(false);
-  const [settleMsg, setSettleMsg] = useState("");
-  const [settleErr, setSettleErr] = useState("");
-
-  async function runSettlement() {
-    setSettling(true);
-    setSettleErr("");
-    try {
-      const response = await fetch("/api/warnings/grace-settlement", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ academicYear: year, semester, idempotencyKey: crypto.randomUUID() }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "희월 정산에 실패했습니다.");
-      setSettleMsg(result.message || "희월 정산을 완료했습니다.");
-      setSettleOpen(false);
-      void load();
-    } catch (error) {
-      setSettleErr(error instanceof Error ? error.message : "희월 정산에 실패했습니다.");
-    } finally {
-      setSettling(false);
-    }
-  }
+  const [applyingGraceId, setApplyingGraceId] = useState<string | null>(null);
+  const [graceMessage, setGraceMessage] = useState<{ studentId: string; type: "success" | "error"; text: string } | null>(null);
 
   const loadEntries = useCallback(async (studentId: string) => {
     setEntriesLoadingId(studentId);
@@ -117,6 +94,27 @@ export default function PointStats({ role }: { role: string }) {
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh({ channelName: `point-stats-${role}`, tables: [{ table: "warning_entries" }, { table: "students" }], onRefresh: () => { void load(); } });
 
+  async function applyGrace(row: StatsStudent) {
+    setApplyingGraceId(row.id);
+    setGraceMessage(null);
+    try {
+      const response = await fetch("/api/warnings/grace-settlement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId: row.id, academicYear: year, semester, idempotencyKey: crypto.randomUUID() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "희월 적용에 실패했습니다.");
+      setGraceMessage({ studentId: row.id, type: "success", text: result.message || "희월을 적용했습니다." });
+      void load();
+      if (entriesByStudent[row.id]) void loadEntries(row.id);
+    } catch (error) {
+      setGraceMessage({ studentId: row.id, type: "error", text: error instanceof Error ? error.message : "희월 적용에 실패했습니다." });
+    } finally {
+      setApplyingGraceId(null);
+    }
+  }
+
   const grades = useMemo(() => Array.from(new Set(rows.map((row) => row.grade))).sort(), [rows]);
   const disciplineTotal = rows.reduce((sum, row) => sum + (row.discipline?.semesterTotal || 0), 0);
   const praiseTotal = rows.reduce((sum, row) => sum + (row.praise?.semesterTotal || 0), 0);
@@ -130,12 +128,8 @@ export default function PointStats({ role }: { role: string }) {
           <h2>점수 통계</h2>
           <p className="muted">학생을 선택하면 월별 훈계 점수·칭찬 점수 내역을 함께 확인할 수 있습니다.</p>
         </div>
-        <div className="topbar-actions">
-          <span className="pill">훈계 {disciplineTotal}점 · 칭찬 {praiseTotal}점</span>
-          {role === "admin" && <button type="button" className="secondary" onClick={() => { setSettleErr(""); setSettleOpen(true); }}>희월 정산 실행</button>}
-        </div>
+        <span className="pill">훈계 {disciplineTotal}점 · 칭찬 {praiseTotal}점</span>
       </div>
-      {settleMsg && <p className="success-message">{settleMsg}</p>}
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
@@ -164,13 +158,17 @@ export default function PointStats({ role }: { role: string }) {
             {rows.map((row) => {
               const isOpen = expandedId === row.id;
               const monthly = mergeMonthly(row.discipline?.monthly || [], row.praise?.monthly || []);
+              const disciplineNow = row.discipline?.semesterTotal ?? 0;
+              const praiseNow = row.praise?.semesterTotal ?? 0;
+              const canApplyGrace = disciplineNow >= 1 && praiseNow >= GRACE_UNIT_PRAISE_COST;
+              const message = graceMessage?.studentId === row.id ? graceMessage : null;
               return (
                 <Fragment key={row.id}>
                   <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => toggleStudentRow(row.id)}>
                     <td className="sticky grade"><b>{row.grade}</b></td>
                     <td className="sticky name">{row.name}</td>
-                    <td><b>{row.discipline?.semesterTotal ?? 0}점</b></td>
-                    <td><b>{row.praise?.semesterTotal ?? 0}점</b></td>
+                    <td><b>{disciplineNow}점</b></td>
+                    <td><b>{praiseNow}점</b></td>
                     <td>{row.graceTotal || 0}점</td>
                     <td>{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
                     <td>{isOpen ? "닫기" : "월별 보기"}</td>
@@ -190,6 +188,18 @@ export default function PointStats({ role }: { role: string }) {
                         ) : (
                           <p className="muted">이번 학기 기록이 없습니다.</p>
                         )}
+
+                        <div className="grace-apply" onClick={(e) => e.stopPropagation()}>
+                          <p className="eyebrow">GRACE CONVERSION</p>
+                          <h3>희월 정산</h3>
+                          <p className="muted">희월 1점을 적용하면 칭찬 점수 {GRACE_UNIT_PRAISE_COST}점, 훈계 점수 1점이 차감됩니다. 둘 중 하나라도 0점 밑으로 내려가면 적용되지 않습니다. 적용 시 학부모에게 알림이 발송됩니다.</p>
+                          <button type="button" className="secondary" onClick={() => applyGrace(row)} disabled={!canApplyGrace || applyingGraceId === row.id}>
+                            {applyingGraceId === row.id ? "적용 중..." : "희월 1점 적용"}
+                          </button>
+                          {!canApplyGrace && <p className="muted">칭찬 점수 {GRACE_UNIT_PRAISE_COST}점 이상, 훈계 점수 1점 이상일 때만 적용할 수 있습니다.</p>}
+                          {message && <p className={message.type === "success" ? "success-message" : "form-error"}>{message.text}</p>}
+                        </div>
+
                         <div className="point-history">
                           <p className="eyebrow">POINT HISTORY</p>
                           <h3>칭찬·훈계 상세 내역</h3>
@@ -225,20 +235,6 @@ export default function PointStats({ role }: { role: string }) {
           </tbody>
         </table>
       </div>
-
-      <ConfirmDialog
-        open={settleOpen}
-        title="희월 정산 실행"
-        eyebrow="GRACE SETTLEMENT"
-        confirmLabel={settling ? "정산 중..." : "정산 실행"}
-        pending={settling}
-        onClose={() => { if (!settling) setSettleOpen(false); }}
-        onConfirm={runSettlement}
-      >
-        <p>{year}학년도 {semester}학기 기준으로, 칭찬 점수 20점마다 희월 1점으로 전환되어 훈계 점수에서 차감됩니다.</p>
-        <p className="muted">훈계 점수가 남아있는 만큼만 적용되며(0 밑으로 내려가지 않음), 20점 단위로 나누어떨어지지 않은 칭찬 점수는 다음 정산으로 이월됩니다. 적용 대상 학생에게는 학부모 알림이 발송됩니다.</p>
-        {settleErr && <p role="alert" className="form-error">{settleErr}</p>}
-      </ConfirmDialog>
     </section>
   );
 }

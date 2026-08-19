@@ -8,7 +8,10 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "세션이 만료되었습니다. 다시 로그인해 주세요." }, { status: 401 });
   if (!(await userIsStaff(s, user.id))) return NextResponse.json({ error: "교사 또는 관리자 권한이 필요합니다." }, { status: 403 });
   const studentId = new URL(req.url).searchParams.get("studentId");
-  let q = s.from("warning_entries").select("id,student_id,warning_date,entry_type,kind,category,previous_value,new_value,delta,change_type,parent_visible_reason,teacher_note,created_at,profiles(full_name),warning_generated_notices(notice_id,recipient_count,push_sent_count,push_failed_count)").order("created_at", { ascending: false }).limit(200);
+  // warning_generated_notices is not directly linked to warning_entries by a foreign key (both
+  // reference warning_change_batches independently), so it can't be embedded here -- PostgREST
+  // rejects the query with a "could not find a relationship" error when it's included.
+  let q = s.from("warning_entries").select("id,student_id,warning_date,entry_type,kind,category,previous_value,new_value,delta,change_type,parent_visible_reason,teacher_note,created_at,profiles(full_name)").order("created_at", { ascending: false }).limit(200);
   if (studentId) q = q.eq("student_id", studentId);
   const { data, error } = await q;
   return NextResponse.json(error ? { error: "훈계 점수 감사 기록을 불러오지 못했습니다." } : { entries: data || [] }, { status: error ? 500 : 200 });
