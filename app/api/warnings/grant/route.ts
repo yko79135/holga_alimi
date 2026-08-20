@@ -128,7 +128,7 @@ export async function POST(req: Request) {
 
   let notices = 0, recipients = 0;
   const missing: string[] = [];
-  const createdNotices: Array<{ id: string; studentId: string; title: string; body: string }> = [];
+  const createdNotices: Array<{ id: string; studentId: string; title: string; body: string; parentIds: string[] }> = [];
   for (const studentId of studentIds) {
     const student = studentsRes.data.find((s: any) => s.id === studentId);
     const monthlyTotal = (allEntriesRes.data || [])
@@ -166,7 +166,7 @@ export async function POST(req: Request) {
     if (generatedRes.error || !generatedRes.data) logDiagnostic({ ...baseDiagnostic, operation: "upsert", table: "warning_generated_notices", errorCode: generatedRes.error?.code, errorMessage: generatedRes.error?.message });
     notices++;
     recipients += recipientCount;
-    createdNotices.push({ id: noticeRes.data.id, studentId, title: content.title, body: content.body });
+    createdNotices.push({ id: noticeRes.data.id, studentId, title: content.title, body: content.body, parentIds: Array.from(uniqueParents) });
   }
 
   const parentIds = Array.from(new Set((linksRes.data || []).map((link: any) => link.parent_id).filter(Boolean)));
@@ -183,7 +183,7 @@ export async function POST(req: Request) {
           const push = await sendNoticePushes({ id: item.id, target_scope: "student", target_grade: null, title: item.title, body: item.body, created_by: user.id });
           const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", item.studentId);
           if (error) console.error("warning-grant-push-count-update-failed", { batchId, noticeId: item.id, code: error.code, message: error.message });
-          if (kind === "discipline") await notifyStaffOfDisciplinePoint({ id: item.id, title: item.title, body: item.body }, user.id);
+          if (kind === "discipline") await notifyStaffOfDisciplinePoint({ id: item.id, title: item.title, body: item.body }, user.id, item.parentIds);
         } catch (error) {
           console.error("warning-grant-push-background-failed", { batchId, noticeId: item.id, message: error instanceof Error ? error.message : "unknown" });
         }
