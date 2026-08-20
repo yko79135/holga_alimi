@@ -161,7 +161,10 @@ export default function AccountSettings({ email, roles }: { email: string; roles
       setEmailBusy(false);
       return;
     }
-    const { data, error } = await s.auth.updateUser({ email: trimmedEmail });
+    const { data, error } = await s.auth.updateUser(
+      { email: trimmedEmail },
+      { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
+    );
     setEmailBusy(false);
     if (error) {
       setEmailErr(error.message || "이메일 변경 요청에 실패했습니다.");
