@@ -1302,15 +1302,44 @@ h3 {
 }
 .student-picker-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: var(--mint-100);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.student-picker-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--teal-900);
+}
+.student-picker-toolbar select,
+.student-picker-toolbar input {
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: var(--white);
+  font-size: 13px;
+}
+.student-picker-toolbar select:focus,
+.student-picker-toolbar input:focus {
+  outline: none;
+  border-color: var(--teal-600);
+}
+.student-picker-toolbar .pill {
+  margin-bottom: 9px;
 }
 .student-picker-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
+  gap: 8px;
   max-height: 260px;
   overflow: auto;
   border: 1px solid var(--line);
@@ -1323,15 +1352,25 @@ h3 {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  padding: 4px 6px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
 }
 .student-picker-item:hover {
   background: var(--mint-100);
+  border-color: var(--line);
+}
+.student-picker-item:has(input:checked) {
+  background: var(--blue-100);
+  border-color: var(--teal-600);
+  color: var(--teal-900);
+  font-weight: 700;
 }
 .student-picker-item input {
   width: 16px;
   height: 16px;
+  accent-color: var(--teal-600);
 }
 .total-days-input {
   width: 56px;
@@ -1400,6 +1439,16 @@ h3 {
   }
   .warning-actions button {
     flex: 1;
+  }
+  .student-picker-toolbar {
+    align-items: stretch;
+  }
+  .student-picker-toolbar label {
+    flex: 1 1 100%;
+  }
+  .student-picker-toolbar select,
+  .student-picker-toolbar input {
+    width: 100%;
   }
 }
 
