@@ -24,6 +24,7 @@ export const DISCIPLINE_CATEGORY_POINT_HINTS: Partial<Record<(typeof DISCIPLINE_
   "지각·시간 미준수": "1점",
   "말씀묵상·QT·경건생활 미이행": "1점",
   "교사 지시 불응": "1점",
+  "수업·예배 태도 불량·장난": "1점",
   "거짓말": "10/5점",
   "부정행위": "20/10점",
   "친구·교사간 폭행": "10~30점",

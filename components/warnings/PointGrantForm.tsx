@@ -19,10 +19,10 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const categories = categoriesForKind(kind);
   const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name)), [students]);
 
-  const [grade, setGrade] = useState("");
-  const [studentId, setStudentId] = useState("");
-  const [wholeGrade, setWholeGrade] = useState(false);
-  const [confirmingWholeGrade, setConfirmingWholeGrade] = useState(false);
+  const [pickerGrade, setPickerGrade] = useState("");
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [studentIds, setStudentIds] = useState<string[]>([]);
+  const [confirmingBulk, setConfirmingBulk] = useState(false);
   const [category, setCategory] = useState("");
   const [customCategoryLabel, setCustomCategoryLabel] = useState("");
   const [classPeriodId, setClassPeriodId] = useState("");
@@ -50,17 +50,27 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   useLiveRefresh({ channelName: `point-grant-classes-${role}`, tables: [{ table: "class_periods" }], onRefresh: () => { void loadClassPeriods(); } });
 
   const grades = useMemo(() => sortGrades(Array.from(new Set(activeStudents.map((s) => s.grade)))), [activeStudents]);
-  const visibleStudents = useMemo(() => (grade ? activeStudents.filter((s) => s.grade === grade) : activeStudents), [activeStudents, grade]);
+  const filteredStudents = useMemo(
+    () => activeStudents.filter((s) => (!pickerGrade || s.grade === pickerGrade) && (!pickerSearch.trim() || s.name.toLowerCase().includes(pickerSearch.trim().toLowerCase()))),
+    [activeStudents, pickerGrade, pickerSearch],
+  );
   const selectableClasses = role === "admin" ? classPeriods : classPeriods.filter((c) => c.active);
 
   const pointsValue = Number(points);
   const pointsValid = isValidPointValue(kind, pointsValue);
   const isCustomCategory = category === CUSTOM_CATEGORY;
   const customCategoryValid = !isCustomCategory || customCategoryLabel.trim().length > 0;
-  const targetIds = wholeGrade ? visibleStudents.map((s) => s.id) : studentId ? [studentId] : [];
-  const canSubmit = targetIds.length > 0 && !!category && !!classPeriodId && pointsValid && customCategoryValid;
+  const canSubmit = studentIds.length > 0 && !!category && !!classPeriodId && pointsValid && customCategoryValid;
 
-  async function submit(studentIds: string[]) {
+  function toggleStudent(studentId: string) {
+    setStudentIds((current) => (current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]));
+  }
+
+  function selectAllFiltered() {
+    setStudentIds((current) => Array.from(new Set([...current, ...filteredStudents.map((s) => s.id)])));
+  }
+
+  async function submit() {
     if (!studentIds.length || pending) return;
     setPending(true);
     setErr("");
@@ -79,9 +89,8 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       setClassPeriodId("");
       setPoints(String(DEFAULT_POINT_VALUE));
       setDetail("");
-      setStudentId("");
-      setWholeGrade(false);
-      setConfirmingWholeGrade(false);
+      setStudentIds([]);
+      setConfirmingBulk(false);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "저장하지 못했습니다. 다시 시도해 주세요.");
     } finally {
@@ -91,8 +100,8 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
 
   function handleSubmitClick() {
     if (!canSubmit) return;
-    if (wholeGrade) { setConfirmingWholeGrade(true); return; }
-    void submit(targetIds);
+    if (studentIds.length > 1) { setConfirmingBulk(true); return; }
+    void submit();
   }
 
   async function addClassPeriod() {
@@ -157,26 +166,30 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         </div>
       )}
 
+      <div className="student-picker">
+        <div className="student-picker-toolbar">
+          <label>학년 필터<select value={pickerGrade} onChange={(e) => setPickerGrade(e.target.value)}><option value="">전체 학년</option>{grades.map((g) => <option key={g}>{g}</option>)}</select></label>
+          <label>학생 검색<input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="이름 검색" /></label>
+          <span className="pill">{studentIds.length}명 선택됨</span>
+          <button type="button" className="secondary" onClick={selectAllFiltered} disabled={!filteredStudents.length}>필터된 학생 전체 선택</button>
+          <button type="button" className="secondary" onClick={() => setStudentIds([])} disabled={!studentIds.length}>선택 해제</button>
+        </div>
+        <div className="student-picker-list">
+          {filteredStudents.map((s) => {
+            const checked = studentIds.includes(s.id);
+            return (
+              <label className="student-picker-item" key={s.id}>
+                <input type="checkbox" checked={checked} onChange={() => toggleStudent(s.id)} />
+                <span>{s.grade} · {s.name}</span>
+              </label>
+            );
+          })}
+          {!filteredStudents.length && <p className="muted">조건에 맞는 학생이 없습니다.</p>}
+        </div>
+      </div>
+
       <div className="form-panel">
         <div className="two-columns">
-          <label>학년
-            <select value={grade} onChange={(e) => { setGrade(e.target.value); setStudentId(""); setWholeGrade(false); }}>
-              <option value="">전체 학년</option>
-              {grades.map((g) => <option key={g}>{g}</option>)}
-            </select>
-          </label>
-          <label>학생
-            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} disabled={wholeGrade}>
-              <option value="">학생 선택</option>
-              {visibleStudents.map((s) => <option key={s.id} value={s.id}>{s.grade} · {s.name}</option>)}
-            </select>
-          </label>
-          {!!grade && (
-            <label className="switch-line">
-              <input type="checkbox" checked={wholeGrade} onChange={(e) => { setWholeGrade(e.target.checked); setStudentId(""); }} />
-              <span>{grade} 학생 전체에게 일괄 부여 ({visibleStudents.length}명)</span>
-            </label>
-          )}
           <label>{meta.categoryLabel}
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">카테고리 선택</option>
@@ -211,22 +224,22 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
 
       <div className="warning-actions">
         <button className="primary" onClick={handleSubmitClick} disabled={!canSubmit || pending}>
-          {pending ? "전송 중..." : wholeGrade ? `${grade} 전체에게 전송` : "전송"}
+          {pending ? "전송 중..." : studentIds.length > 1 ? `${studentIds.length}명에게 전송` : "전송"}
         </button>
       </div>
 
       {!classPeriods.length && <p className="muted">등록된 수업이 없습니다. {role === "admin" ? "위에서 수업을 추가해 주세요." : "관리자에게 수업 등록을 요청해 주세요."}</p>}
 
       <ConfirmDialog
-        open={confirmingWholeGrade}
-        title={`${grade} 학생 ${targetIds.length}명에게 일괄 부여`}
+        open={confirmingBulk}
+        title={`학생 ${studentIds.length}명에게 일괄 부여`}
         eyebrow="BULK GRANT"
         confirmLabel="전체에게 전송"
         pending={pending}
-        onClose={() => setConfirmingWholeGrade(false)}
-        onConfirm={() => void submit(targetIds)}
+        onClose={() => setConfirmingBulk(false)}
+        onConfirm={() => void submit()}
       >
-        <p>{grade} 학년 학생 {targetIds.length}명 전원에게 &ldquo;{isCustomCategory ? customCategoryLabel : category}&rdquo; 사유로 {POINT_KIND_LABELS[kind]} {pointsValue}점이 한번에 부여되고, 각 학생의 학부모에게 개별 알림이 전송됩니다. 계속할까요?</p>
+        <p>선택한 학생 {studentIds.length}명 전원에게 &ldquo;{isCustomCategory ? customCategoryLabel : category}&rdquo; 사유로 {POINT_KIND_LABELS[kind]} {pointsValue}점이 한번에 부여되고, 각 학생의 학부모에게 개별 알림이 전송됩니다. 계속할까요?</p>
       </ConfirmDialog>
     </section>
   );
