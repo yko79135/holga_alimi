@@ -195,6 +195,11 @@ h3 {
   gap: 10px;
   flex-wrap: wrap;
 }
+.view-switcher {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
 .login-shell {
   min-height: 100vh;
   display: grid;
