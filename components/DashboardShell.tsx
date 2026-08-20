@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import Header from "@/components/Header";
-import ParentDashboard from "@/components/ParentDashboard";
-import StaffDashboard from "@/components/StaffDashboard";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, resolveDashboardView } from "@/lib/roles";
+
+// Code-split by view so a notification deep link only downloads the dashboard it's actually
+// landing on (parent or staff), not both -- this is the biggest lever on first-paint time for a
+// cold PWA launch from a push notification tap.
+const ParentDashboard = dynamic(() => import("@/components/ParentDashboard"));
+const StaffDashboard = dynamic(() => import("@/components/StaffDashboard"));
 
 export default function DashboardShell({ userId, name, roles, legacyRole, initialView }: { userId: string; name: string; roles: AppRole[]; legacyRole?: string | null; initialView?: string | null }) {
   const searchParams = useSearchParams();

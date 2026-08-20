@@ -4,6 +4,7 @@ import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { latestStatusByStudentDate } from "@/lib/attendance/aggregate";
 import { emptyExceptionCounts, type AttendanceExceptionStatus, type AttendanceGridStudent, type AttendanceStatus } from "@/lib/attendance/types";
+import { sortGrades } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -82,5 +83,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ dates, students: rows, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
+  return NextResponse.json({ dates, students: rows, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
 }

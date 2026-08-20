@@ -11,6 +11,7 @@ import PointStats from "@/components/warnings/PointStats";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
 import AttendanceStats from "@/components/attendance/AttendanceStats";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
+import { compareGrades, sortGrades } from "@/lib/grade-sort";
 import { COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
@@ -72,12 +73,12 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentPickerGrade, setStudentPickerGrade] = useState("");
   const [studentPickerSearch, setStudentPickerSearch] = useState("");
 
-  const sortStudents = (items: Student[]) => [...items].sort((a, b) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name));
+  const sortStudents = (items: Student[]) => [...items].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name));
 
   const loadStudents = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase.from("students").select("id,name,grade,homeroom,active").order("grade").order("name");
-    setStudents((data || []) as Student[]);
+    setStudents(sortStudents((data || []) as Student[]));
   }, []);
 
   const loadNotices = useCallback(async () => {
@@ -177,7 +178,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { if (studentGradeFilter) setExpandedGrades((current) => ({ ...current, [studentGradeFilter]: true })); }, [studentGradeFilter]);
   useEffect(() => { if (studentSearch.trim()) setExpandedGrades((current) => Object.fromEntries(Object.keys(groupedStudents).map((g) => [g, true]))); }, [studentSearch, groupedStudents]);
 
-  const grades = useMemo(() => Array.from(new Set(students.map((student) => student.grade))).sort(), [students]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(students.map((student) => student.grade)))), [students]);
   const visibleNotices = onlyMine ? notices.filter((notice) => notice.created_by === userId) : notices;
   const confirmedTotal = visibleNotices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
 
@@ -529,7 +530,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           </form>}
           <div className="content-card student-directory-panel">
             <div className="section-heading"><div><p className="eyebrow">STUDENT ACCOUNTS</p><h2>학생 목록</h2></div><div className="student-toolbar-actions"><button type="button" className="secondary" onClick={() => setExpandedGrades(Object.fromEntries(Object.keys(groupedStudents).map((g) => [g, true])))}>모두 펼치기</button><button type="button" className="secondary" onClick={() => setExpandedGrades({})}>모두 접기</button></div></div>
-            <div className="student-grade-list">{Object.entries(groupedStudents).map(([gradeName, gradeStudents]) => {
+            <div className="student-grade-list">{Object.entries(groupedStudents).sort(([a], [b]) => compareGrades(a, b)).map(([gradeName, gradeStudents]) => {
               const isOpen = expandedGrades[gradeName] ?? Object.keys(groupedStudents).length <= 3;
               const missing = gradeStudents.filter((student) => !(parentLinks[student.id] || []).length).length;
               return <section className="student-grade-section" key={gradeName}><button type="button" className="student-grade-header" aria-expanded={isOpen} onClick={() => setExpandedGrades((current) => ({ ...current, [gradeName]: !isOpen }))}><strong>{gradeName}</strong><span>{gradeStudents.length}명 · 학부모 미연결 {missing}명</span><em>{isOpen ? "접기" : "펼치기"}</em></button>{isOpen && <div className="compact-student-list">{gradeStudents.map((student) => {

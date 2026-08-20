@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
 import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS } from "@/lib/attendance/schoolDays";
+import { sortGrades } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -55,5 +56,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ students: rows, totalInstructionalDays, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
+  return NextResponse.json({ students: rows, totalInstructionalDays, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
 }

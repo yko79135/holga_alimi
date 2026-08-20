@@ -5,6 +5,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { buildWarningReasonTemplate, hasMeaningfulReasonAfterTemplate, warningDelta, warningReasonErrorMessage } from "@/lib/warnings/reasons";
 import type { WarningCellChange, WarningGridStudent } from "@/lib/warnings/types";
 import type { PointKind } from "@/lib/warnings/categories";
+import { sortGrades } from "@/lib/grade-sort";
 
 const now = new Date();
 const KIND_META: Record<PointKind, { eyebrow: string; label: string; graceLabel: string; totalLabel: string }> = {
@@ -46,7 +47,7 @@ export default function WarningManager({ role, kind: fixedKind }: { role: string
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh({ channelName: `warning-manager-${kind}-${role}`, tables: [{ table: "warning_entries" }, { table: "students" }, { table: "parent_students" }], onRefresh: () => { void load(); } });
 
-  const grades = useMemo(() => Array.from(new Set(rows.map((r) => r.grade))).sort(), [rows]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(rows.map((r) => r.grade)))), [rows]);
   const key = (sid: string, t: string) => `${sid}:${t}`;
   const base = (r: WarningGridStudent, t: string) => (t === "grace" ? r.graceAdjustment : r.daily[t] || 0);
   const val = (r: WarningGridStudent, t: string) => draft[key(r.id, t)] ?? base(r, t);

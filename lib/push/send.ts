@@ -105,6 +105,14 @@ export async function sendNoticePushes(notice: Notice): Promise<PushResult> {
   return parentResult;
 }
 
+/** Pushes a discipline-point notice to every teacher/admin except whoever granted the point, so
+ * the rest of staff hears about every discipline point as it happens, not just the parent. */
+export async function notifyStaffOfDisciplinePoint(notice: Pick<Notice, "id" | "title" | "body">, authorId: string | null): Promise<PushResult> {
+  const staffIds = await resolveStaffRecipientIds();
+  const recipients = authorId ? staffIds.filter((id) => id !== authorId) : staffIds;
+  return pushToUserIds(recipients, buildStaffNoticePayload(notice));
+}
+
 /** Notifies the notice's author when a parent replies. No-op if the notice has no known author
  * (e.g. it predates the created_by column). */
 export async function sendReplyPushToTeacher(notice: { id: string; title: string; created_by: string | null }, parentName: string, replyText: string): Promise<PushResult> {

@@ -593,6 +593,9 @@ h3 {
 .parent-stat-block .stats-row.two {
   grid-template-columns: repeat(2, 1fr);
 }
+.parent-stat-block .stats-row.three {
+  grid-template-columns: repeat(3, 1fr);
+}
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

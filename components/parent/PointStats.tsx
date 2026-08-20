@@ -11,6 +11,7 @@ type StatsStudent = {
   homeroom: string | null;
   discipline: WarningStudentSummary;
   praise: WarningStudentSummary;
+  graceTotal: number;
 };
 
 const now = new Date();
@@ -47,6 +48,7 @@ export default function ParentPointStats() {
           <p className="eyebrow">POINT STATS</p>
           <h2>점수 통계</h2>
           <p className="muted">자녀의 이번 학기 칭찬 점수·훈계 점수 합계를 한눈에 볼 수 있습니다.</p>
+          <p className="muted">매월 말, 칭찬 점수 20점마다 훈계 점수 1점을 상쇄할 수 있으며 이렇게 상쇄된 점수를 희월 점수라고 합니다.</p>
         </div>
       </div>
 
@@ -61,9 +63,10 @@ export default function ParentPointStats() {
       {rows.map((row) => (
         <div key={row.id} className="parent-stat-block">
           <h3>{row.name} <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span></h3>
-          <div className="stats-row two">
+          <div className="stats-row three">
             <div className="stat-card"><span>칭찬 점수</span><strong>{row.praise?.semesterTotal ?? 0}점</strong></div>
             <div className="stat-card"><span>훈계 점수</span><strong>{row.discipline?.semesterTotal ?? 0}점</strong></div>
+            <div className="stat-card"><span>희월</span><strong>{row.graceTotal ?? 0}점</strong></div>
           </div>
         </div>
       ))}

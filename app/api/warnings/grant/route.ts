@@ -1,10 +1,10 @@
 import { after, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendNoticePushes } from "@/lib/push/send";
+import { sendNoticePushes, notifyStaffOfDisciplinePoint } from "@/lib/push/send";
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { changeType, buildPointNotice } from "@/lib/warnings/format";
-import { CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
+import { CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_DISCIPLINE_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ type Diagnostic = {
   userId?: string;
   role?: string;
   kind?: string;
-  studentId?: string;
+  studentIds?: string[];
   errorCode?: string;
   errorMessage?: string;
 };
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   const kind = body.kind === "praise" ? "praise" : body.kind === "discipline" ? "discipline" : null;
-  const studentId = String(body.studentId || "").trim();
+  const studentIds: string[] = Array.from(new Set((Array.isArray(body.studentIds) ? body.studentIds : body.studentId ? [body.studentId] : []).map((id: any) => String(id || "").trim()).filter(Boolean)));
   const category = String(body.category || "").trim();
   const classPeriodId = String(body.classPeriodId || "").trim();
   const detail = String(body.detail || "").trim();
@@ -63,22 +63,22 @@ export async function POST(req: Request) {
   const idempotencyKey = String(body.idempotencyKey || "").trim();
   const isCustomCategory = category === CUSTOM_CATEGORY;
   const customCategoryLabel = isCustomCategory ? String(body.customCategoryLabel || "").trim() : "";
-  const baseDiagnostic = { requestId, userId: user.id, role, kind: kind || undefined, studentId };
+  const baseDiagnostic = { requestId, userId: user.id, role, kind: kind || undefined, studentIds };
 
-  if (!kind || !studentId || !classPeriodId || !idempotencyKey || !isValidCategory(kind as PointKind, category)) {
+  if (!kind || !studentIds.length || !classPeriodId || !idempotencyKey || !isValidCategory(kind as PointKind, category)) {
     return NextResponse.json({ error: "학생, 카테고리, 수업을 모두 선택해 주세요." }, { status: 400 });
   }
   if (isCustomCategory && !customCategoryLabel) {
     return NextResponse.json({ error: "직접 입력한 사유를 작성해 주세요." }, { status: 400 });
   }
-  if (!isValidPointValue(points)) {
-    return NextResponse.json({ error: "점수는 1 이상의 정수로 입력해 주세요." }, { status: 400 });
+  if (!isValidPointValue(kind as PointKind, points)) {
+    return NextResponse.json({ error: kind === "discipline" ? `점수는 1~${MAX_DISCIPLINE_POINT_VALUE} 사이의 정수로 입력해 주세요.` : "점수는 1 이상의 정수로 입력해 주세요." }, { status: 400 });
   }
 
   const reasonLabel = isCustomCategory ? customCategoryLabel : category;
 
-  const studentRes = await supabase.from("students").select("id,name").eq("id", studentId).single();
-  if (studentRes.error || !studentRes.data) return NextResponse.json({ error: "학생 정보를 확인할 수 없습니다." }, { status: 400 });
+  const studentsRes = await supabase.from("students").select("id,name").in("id", studentIds);
+  if (studentsRes.error || !studentsRes.data || studentsRes.data.length !== studentIds.length) return NextResponse.json({ error: "학생 정보를 확인할 수 없습니다." }, { status: 400 });
 
   const classRes = await supabase.from("class_periods").select("id,name,active").eq("id", classPeriodId).single();
   if (classRes.error || !classRes.data || !classRes.data.active) return NextResponse.json({ error: "수업 정보를 확인할 수 없습니다." }, { status: 400 });
@@ -97,78 +97,76 @@ export async function POST(req: Request) {
   const batchId = batchRes.data.id;
 
   const parentVisibleReason = detail ? `${reasonLabel} - ${detail}` : reasonLabel;
-  const entryRes = await supabase
-    .from("warning_entries")
-    .insert({
-      batch_id: batchId,
-      student_id: studentId,
-      warning_date: dateOnly,
-      academic_year: year,
-      semester,
-      month,
-      entry_type: "daily",
-      change_type: changeType(delta, "daily"),
-      previous_value: 0,
-      new_value: points,
-      delta,
-      category,
-      custom_category_label: isCustomCategory ? customCategoryLabel : null,
-      kind,
-      class_period_id: classPeriodId,
-      parent_visible_reason: parentVisibleReason,
-      author_id: user.id,
-    })
-    .select("id")
-    .single();
-  if (entryRes.error || !entryRes.data) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_entries", errorCode: entryRes.error?.code, errorMessage: entryRes.error?.message });
+  const entryRows = studentIds.map((studentId) => ({
+    batch_id: batchId,
+    student_id: studentId,
+    warning_date: dateOnly,
+    academic_year: year,
+    semester,
+    month,
+    entry_type: "daily",
+    change_type: changeType(delta, "daily"),
+    previous_value: 0,
+    new_value: points,
+    delta,
+    category,
+    custom_category_label: isCustomCategory ? customCategoryLabel : null,
+    kind,
+    class_period_id: classPeriodId,
+    parent_visible_reason: parentVisibleReason,
+    author_id: user.id,
+  }));
+  const entryRes = await supabase.from("warning_entries").insert(entryRows).select("id,student_id");
+  if (entryRes.error || !entryRes.data || entryRes.data.length !== entryRows.length) return failure({ ...baseDiagnostic, operation: "insert", table: "warning_entries", errorCode: entryRes.error?.code, errorMessage: entryRes.error?.message });
 
   const [allEntriesRes, linksRes] = await Promise.all([
-    supabase.from("warning_entries").select("delta,kind").eq("student_id", studentId).eq("academic_year", year).eq("semester", semester).eq("month", month),
-    supabase.from("parent_students").select("parent_id").eq("student_id", studentId),
+    supabase.from("warning_entries").select("student_id,delta,kind").in("student_id", studentIds).eq("academic_year", year).eq("semester", semester).eq("month", month),
+    supabase.from("parent_students").select("student_id,parent_id").in("student_id", studentIds),
   ]);
   if (allEntriesRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "warning_entries", errorCode: allEntriesRes.error.code, errorMessage: allEntriesRes.error.message });
   if (linksRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "parent_students", errorCode: linksRes.error.code, errorMessage: linksRes.error.message });
 
-  const monthlyTotal = (allEntriesRes.data || [])
-    .filter((entry: any) => (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"))
-    .reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
-
-  const content = buildPointNotice({ kind: kind as PointKind, studentName: studentRes.data.name, category: reasonLabel, className: classRes.data.name, detail, points, monthlyTotal });
-  const noticeRes = await supabase
-    .from("notices")
-    .insert({
-      type: kind === "praise" ? "praise" : "warning",
-      title: content.title,
-      body: content.body,
-      target_scope: "student",
-      requires_confirmation: true,
-      created_by: user.id,
-      published_at: new Date().toISOString(),
-      source_type: kind === "praise" ? "praise_update" : "warning_update",
-      source_id: batchId,
-    })
-    .select("id,target_scope,target_grade")
-    .single();
-
   let notices = 0, recipients = 0;
   const missing: string[] = [];
-  let createdNotice: { id: string } | null = null;
-  if (noticeRes.error || !noticeRes.data) {
-    logDiagnostic({ ...baseDiagnostic, operation: "insert", table: "notices", errorCode: noticeRes.error?.code, errorMessage: noticeRes.error?.message });
-  } else {
+  const createdNotices: Array<{ id: string; studentId: string; title: string; body: string }> = [];
+  for (const studentId of studentIds) {
+    const student = studentsRes.data.find((s: any) => s.id === studentId);
+    const monthlyTotal = (allEntriesRes.data || [])
+      .filter((entry: any) => entry.student_id === studentId && (kind === "praise" ? entry.kind === "praise" : entry.kind !== "praise"))
+      .reduce((sum: number, entry: any) => sum + Number(entry.delta || 0), 0);
+    const content = buildPointNotice({ kind: kind as PointKind, studentName: student?.name || "학생", category: reasonLabel, className: classRes.data.name, detail, points, monthlyTotal });
+    const noticeRes = await supabase
+      .from("notices")
+      .insert({
+        type: kind === "praise" ? "praise" : "warning",
+        title: content.title,
+        body: content.body,
+        target_scope: "student",
+        requires_confirmation: true,
+        created_by: user.id,
+        published_at: new Date().toISOString(),
+        source_type: kind === "praise" ? "praise_update" : "warning_update",
+        source_id: batchId,
+      })
+      .select("id,target_scope,target_grade")
+      .single();
+    if (noticeRes.error || !noticeRes.data) {
+      logDiagnostic({ ...baseDiagnostic, operation: "insert", table: "notices", errorCode: noticeRes.error?.code, errorMessage: noticeRes.error?.message });
+      continue;
+    }
     const noticeStudentRes = await supabase.from("notice_students").insert({ notice_id: noticeRes.data.id, student_id: studentId }).select("notice_id").single();
     if (noticeStudentRes.error || !noticeStudentRes.data) {
       logDiagnostic({ ...baseDiagnostic, operation: "insert", table: "notice_students", errorCode: noticeStudentRes.error?.code, errorMessage: noticeStudentRes.error?.message });
-    } else {
-      const uniqueParents = new Set((linksRes.data || []).map((link: any) => link.parent_id));
-      const recipientCount = uniqueParents.size;
-      if (!recipientCount) missing.push(studentId);
-      const generatedRes = await supabase.from("warning_generated_notices").upsert({ batch_id: batchId, student_id: studentId, notice_id: noticeRes.data.id, recipient_count: recipientCount, push_sent_count: 0, push_failed_count: 0 }).select("batch_id").single();
-      if (generatedRes.error || !generatedRes.data) logDiagnostic({ ...baseDiagnostic, operation: "upsert", table: "warning_generated_notices", errorCode: generatedRes.error?.code, errorMessage: generatedRes.error?.message });
-      notices = 1;
-      recipients = recipientCount;
-      createdNotice = { id: noticeRes.data.id };
+      continue;
     }
+    const uniqueParents = new Set((linksRes.data || []).filter((link: any) => link.student_id === studentId).map((link: any) => link.parent_id));
+    const recipientCount = uniqueParents.size;
+    if (!recipientCount) missing.push(studentId);
+    const generatedRes = await supabase.from("warning_generated_notices").upsert({ batch_id: batchId, student_id: studentId, notice_id: noticeRes.data.id, recipient_count: recipientCount, push_sent_count: 0, push_failed_count: 0 }).select("batch_id").single();
+    if (generatedRes.error || !generatedRes.data) logDiagnostic({ ...baseDiagnostic, operation: "upsert", table: "warning_generated_notices", errorCode: generatedRes.error?.code, errorMessage: generatedRes.error?.message });
+    notices++;
+    recipients += recipientCount;
+    createdNotices.push({ id: noticeRes.data.id, studentId, title: content.title, body: content.body });
   }
 
   const parentIds = Array.from(new Set((linksRes.data || []).map((link: any) => link.parent_id).filter(Boolean)));
@@ -177,16 +175,18 @@ export async function POST(req: Request) {
     if (eventRes.error) logDiagnostic({ ...baseDiagnostic, operation: "insert", table: "parent_dashboard_events", errorCode: eventRes.error.code, errorMessage: eventRes.error.message });
   }
 
-  if (createdNotice) {
-    const noticeId = createdNotice.id;
+  if (createdNotices.length) {
     after(async () => {
       const admin = createAdminClient();
-      try {
-        const push = await sendNoticePushes({ id: noticeId, target_scope: "student", target_grade: null, title: content.title, body: content.body, created_by: user.id });
-        const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", studentId);
-        if (error) console.error("warning-grant-push-count-update-failed", { batchId, noticeId, code: error.code, message: error.message });
-      } catch (error) {
-        console.error("warning-grant-push-background-failed", { batchId, noticeId, message: error instanceof Error ? error.message : "unknown" });
+      for (const item of createdNotices) {
+        try {
+          const push = await sendNoticePushes({ id: item.id, target_scope: "student", target_grade: null, title: item.title, body: item.body, created_by: user.id });
+          const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", item.studentId);
+          if (error) console.error("warning-grant-push-count-update-failed", { batchId, noticeId: item.id, code: error.code, message: error.message });
+          if (kind === "discipline") await notifyStaffOfDisciplinePoint({ id: item.id, title: item.title, body: item.body }, user.id);
+        } catch (error) {
+          console.error("warning-grant-push-background-failed", { batchId, noticeId: item.id, message: error instanceof Error ? error.message : "unknown" });
+        }
       }
     });
   }
@@ -198,10 +198,13 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     success: true,
-    message: missing.length ? `${kind === "praise" ? "칭찬" : "훈계"} 점수는 저장되었지만 연결된 학부모 계정이 없어 알림을 전송하지 못했습니다.` : `${kind === "praise" ? "칭찬" : "훈계"} 점수가 저장되었고 학부모 알림을 전송했습니다.`,
+    message: missing.length
+      ? `${kind === "praise" ? "칭찬" : "훈계"} 점수는 저장되었지만 일부 학생은 연결된 학부모 계정이 없어 알림을 전송하지 못했습니다.`
+      : studentIds.length > 1
+        ? `학생 ${studentIds.length}명에게 ${kind === "praise" ? "칭찬" : "훈계"} 점수가 저장되었고 학부모 알림을 전송했습니다.`
+        : `${kind === "praise" ? "칭찬" : "훈계"} 점수가 저장되었고 학부모 알림을 전송했습니다.`,
     batchId,
     notices,
     recipients,
-    monthlyTotal,
   });
 }

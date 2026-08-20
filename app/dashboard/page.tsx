@@ -8,9 +8,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("id, full_name, role").eq("id", user.id).single();
+  const [{ data: profile }, roles] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, role").eq("id", user.id).single(),
+    getUserRoles(supabase, user.id),
+  ]);
   if (!profile) return <main className="center-message">계정 프로필을 찾을 수 없습니다. 관리자에게 문의해주세요.</main>;
-  const roles = await getUserRoles(supabase, user.id);
   if (!roles.length) return <main className="center-message">계정 권한을 찾을 수 없습니다. 관리자에게 문의해주세요.</main>;
   const params = await searchParams;
 

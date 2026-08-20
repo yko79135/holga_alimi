@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { categoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_POINT_VALUE, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { categoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_DISCIPLINE_POINT_VALUE, DISCIPLINE_CATEGORY_POINT_HINTS, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
+import { compareGrades, sortGrades } from "@/lib/grade-sort";
 
 type Student = { id: string; name: string; grade: string; active?: boolean };
 type ClassPeriod = { id: string; name: string; active: boolean };
@@ -15,10 +17,12 @@ const KIND_META: Record<PointKind, { eyebrow: string; title: string; description
 export default function PointGrantForm({ role, kind, students }: { role: string; kind: PointKind; students: Student[] }) {
   const meta = KIND_META[kind];
   const categories = categoriesForKind(kind);
-  const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name)), [students]);
+  const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name)), [students]);
 
   const [grade, setGrade] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [wholeGrade, setWholeGrade] = useState(false);
+  const [confirmingWholeGrade, setConfirmingWholeGrade] = useState(false);
   const [category, setCategory] = useState("");
   const [customCategoryLabel, setCustomCategoryLabel] = useState("");
   const [classPeriodId, setClassPeriodId] = useState("");
@@ -45,17 +49,19 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   useEffect(() => { void loadClassPeriods(); }, [loadClassPeriods]);
   useLiveRefresh({ channelName: `point-grant-classes-${role}`, tables: [{ table: "class_periods" }], onRefresh: () => { void loadClassPeriods(); } });
 
-  const grades = useMemo(() => Array.from(new Set(activeStudents.map((s) => s.grade))).sort(), [activeStudents]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(activeStudents.map((s) => s.grade)))), [activeStudents]);
   const visibleStudents = useMemo(() => (grade ? activeStudents.filter((s) => s.grade === grade) : activeStudents), [activeStudents, grade]);
   const selectableClasses = role === "admin" ? classPeriods : classPeriods.filter((c) => c.active);
 
   const pointsValue = Number(points);
-  const pointsValid = isValidPointValue(pointsValue);
+  const pointsValid = isValidPointValue(kind, pointsValue);
   const isCustomCategory = category === CUSTOM_CATEGORY;
   const customCategoryValid = !isCustomCategory || customCategoryLabel.trim().length > 0;
+  const targetIds = wholeGrade ? visibleStudents.map((s) => s.id) : studentId ? [studentId] : [];
+  const canSubmit = targetIds.length > 0 && !!category && !!classPeriodId && pointsValid && customCategoryValid;
 
-  async function submit() {
-    if (!studentId || !category || !classPeriodId || !pointsValid || !customCategoryValid || pending) return;
+  async function submit(studentIds: string[]) {
+    if (!studentIds.length || pending) return;
     setPending(true);
     setErr("");
     setMsg("");
@@ -63,7 +69,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       const response = await fetch("/api/warnings/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, studentId, category, customCategoryLabel: isCustomCategory ? customCategoryLabel.trim() : undefined, classPeriodId, points: pointsValue, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({ kind, studentIds, category, customCategoryLabel: isCustomCategory ? customCategoryLabel.trim() : undefined, classPeriodId, points: pointsValue, detail: detail.trim(), idempotencyKey: crypto.randomUUID() }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || "저장하지 못했습니다. 다시 시도해 주세요.");
@@ -73,11 +79,20 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       setClassPeriodId("");
       setPoints(String(DEFAULT_POINT_VALUE));
       setDetail("");
+      setStudentId("");
+      setWholeGrade(false);
+      setConfirmingWholeGrade(false);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "저장하지 못했습니다. 다시 시도해 주세요.");
     } finally {
       setPending(false);
     }
+  }
+
+  function handleSubmitClick() {
+    if (!canSubmit) return;
+    if (wholeGrade) { setConfirmingWholeGrade(true); return; }
+    void submit(targetIds);
   }
 
   async function addClassPeriod() {
@@ -145,21 +160,27 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       <div className="form-panel">
         <div className="two-columns">
           <label>학년
-            <select value={grade} onChange={(e) => { setGrade(e.target.value); setStudentId(""); }}>
+            <select value={grade} onChange={(e) => { setGrade(e.target.value); setStudentId(""); setWholeGrade(false); }}>
               <option value="">전체 학년</option>
               {grades.map((g) => <option key={g}>{g}</option>)}
             </select>
           </label>
           <label>학생
-            <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} disabled={wholeGrade}>
               <option value="">학생 선택</option>
               {visibleStudents.map((s) => <option key={s.id} value={s.id}>{s.grade} · {s.name}</option>)}
             </select>
           </label>
+          {!!grade && (
+            <label className="switch-line">
+              <input type="checkbox" checked={wholeGrade} onChange={(e) => { setWholeGrade(e.target.checked); setStudentId(""); }} />
+              <span>{grade} 학생 전체에게 일괄 부여 ({visibleStudents.length}명)</span>
+            </label>
+          )}
           <label>{meta.categoryLabel}
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">카테고리 선택</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c} value={c}>{kind === "discipline" && DISCIPLINE_CATEGORY_POINT_HINTS[c as keyof typeof DISCIPLINE_CATEGORY_POINT_HINTS] ? `${c} (${DISCIPLINE_CATEGORY_POINT_HINTS[c as keyof typeof DISCIPLINE_CATEGORY_POINT_HINTS]})` : c}</option>)}
             </select>
           </label>
           {isCustomCategory && (
@@ -174,7 +195,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
             </select>
           </label>
           <label>점수
-            <input type="number" min={1} max={MAX_POINT_VALUE} step={1} value={points} onChange={(e) => setPoints(e.target.value)} />
+            <input type="number" min={1} max={kind === "discipline" ? MAX_DISCIPLINE_POINT_VALUE : undefined} step={1} value={points} onChange={(e) => setPoints(e.target.value)} />
           </label>
         </div>
 
@@ -183,18 +204,30 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         </label>
       </div>
 
-      {!pointsValid && points !== "" && <p className="form-error">점수는 1~{MAX_POINT_VALUE} 사이의 정수로 입력해 주세요.</p>}
+      {!pointsValid && points !== "" && <p className="form-error">{kind === "discipline" ? `점수는 1~${MAX_DISCIPLINE_POINT_VALUE} 사이의 정수로 입력해 주세요.` : "점수는 1 이상의 정수로 입력해 주세요."}</p>}
       {isCustomCategory && !customCategoryValid && <p className="form-error">직접 입력한 사유를 작성해 주세요.</p>}
       {err && <p className="form-error">{err}</p>}
       {msg && <p className="success-message">{msg}</p>}
 
       <div className="warning-actions">
-        <button className="primary" onClick={submit} disabled={!studentId || !category || !classPeriodId || !pointsValid || !customCategoryValid || pending}>
-          {pending ? "전송 중..." : "전송"}
+        <button className="primary" onClick={handleSubmitClick} disabled={!canSubmit || pending}>
+          {pending ? "전송 중..." : wholeGrade ? `${grade} 전체에게 전송` : "전송"}
         </button>
       </div>
 
       {!classPeriods.length && <p className="muted">등록된 수업이 없습니다. {role === "admin" ? "위에서 수업을 추가해 주세요." : "관리자에게 수업 등록을 요청해 주세요."}</p>}
+
+      <ConfirmDialog
+        open={confirmingWholeGrade}
+        title={`${grade} 학생 ${targetIds.length}명에게 일괄 부여`}
+        eyebrow="BULK GRANT"
+        confirmLabel="전체에게 전송"
+        pending={pending}
+        onClose={() => setConfirmingWholeGrade(false)}
+        onConfirm={() => void submit(targetIds)}
+      >
+        <p>{grade} 학년 학생 {targetIds.length}명 전원에게 &ldquo;{isCustomCategory ? customCategoryLabel : category}&rdquo; 사유로 {POINT_KIND_LABELS[kind]} {pointsValue}점이 한번에 부여되고, 각 학생의 학부모에게 개별 알림이 전송됩니다. 계속할까요?</p>
+      </ConfirmDialog>
     </section>
   );
 }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { compareGrades } from "@/lib/grade-sort";
 
 type Role = "admin" | "teacher" | "parent";
 type Status = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
@@ -73,6 +74,12 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
+  const [resetRecordsOpen, setResetRecordsOpen] = useState(false);
+  const [resetRecordsYear, setResetRecordsYear] = useState(new Date().getFullYear());
+  const [resetRecordsSemester, setResetRecordsSemester] = useState(new Date().getMonth() < 7 ? 1 : 2);
+  const [resetRecordsConfirm, setResetRecordsConfirm] = useState("");
+  const [resetRecordsSubmitting, setResetRecordsSubmitting] = useState(false);
+  const [resetRecordsFeedback, setResetRecordsFeedback] = useState<Feedback | null>(null);
   const [invites, setInvites] = useState<InviteSummary[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [inviteExpiryDays, setInviteExpiryDays] = useState(30);
@@ -110,7 +117,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
 
   useEffect(() => {
     const supabase = createClient();
-    void supabase.from("students").select("id,name,grade").order("grade").order("name").then(({ data }) => setStudents(data || []));
+    void supabase.from("students").select("id,name,grade").order("grade").order("name").then(({ data }) => setStudents([...(data || [])].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name))));
     void loadAccounts();
     void loadInvites();
   }, [loadAccounts, loadInvites]);
@@ -262,6 +269,37 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       setDeleteFeedback({ type: "error", text: error instanceof Error ? error.message : "계정 삭제에 실패했습니다." });
     } finally {
       setDeleteSubmitting(false);
+    }
+  }
+
+  const resetRecordsConfirmText = `${resetRecordsYear}년 ${resetRecordsSemester}학기 삭제`;
+
+  function closeResetRecords() {
+    if (resetRecordsSubmitting) return;
+    setResetRecordsOpen(false);
+    setResetRecordsConfirm("");
+    setResetRecordsFeedback(null);
+  }
+
+  async function resetRecords() {
+    if (resetRecordsSubmitting || resetRecordsConfirm !== resetRecordsConfirmText) return;
+    setResetRecordsSubmitting(true);
+    setResetRecordsFeedback(null);
+    try {
+      const response = await fetch("/api/admin/reset-records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ academicYear: resetRecordsYear, semester: resetRecordsSemester, confirmText: resetRecordsConfirm }),
+      });
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result.error || "기록 삭제에 실패했습니다.");
+      setFeedback({ type: "success", text: result.message || "기록을 삭제했습니다." });
+      setResetRecordsOpen(false);
+      setResetRecordsConfirm("");
+    } catch (error) {
+      setResetRecordsFeedback({ type: "error", text: error instanceof Error ? error.message : "기록 삭제에 실패했습니다." });
+    } finally {
+      setResetRecordsSubmitting(false);
     }
   }
 
@@ -447,6 +485,21 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         <a className="secondary" href="/api/admin/data-export">백업 파일 다운로드</a>
       </section>
 
+      <section className="content-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">RECORD RESET</p>
+            <h2>기록 초기화</h2>
+          </div>
+        </div>
+        <p className="muted">선택한 학년도·학기의 훈계·칭찬 점수와 출결 기록, 그리고 그로부터 생성된 학부모 알림을 모두 영구 삭제합니다. 학생·계정·공지문 등 다른 데이터는 영향받지 않습니다. 삭제 전 위의 데이터 백업을 먼저 받아두는 것을 권장합니다.</p>
+        <div className="two-columns">
+          <label>학년도<input type="number" value={resetRecordsYear} onChange={(e) => setResetRecordsYear(Number(e.target.value))} /></label>
+          <label>학기<select value={resetRecordsSemester} onChange={(e) => setResetRecordsSemester(Number(e.target.value))}><option value={1}>1학기</option><option value={2}>2학기</option></select></label>
+        </div>
+        <button type="button" className="danger-button" onClick={() => setResetRecordsOpen(true)}>이 학기 기록 초기화</button>
+      </section>
+
       {deleteTarget && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteSubmitting) closeDeleteModal(); }}>
           <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title">
@@ -461,6 +514,24 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             <input id="delete-account-confirm" type="email" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} autoFocus />
             {deleteFeedback && <p role="alert" className={deleteFeedback.type === "success" ? "success-message" : "form-error"}>{deleteFeedback.text}</p>}
             <div className="modal-actions"><button type="button" className="secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>취소</button><button type="button" className="danger-button" onClick={deleteAccount} disabled={deleteSubmitting || deleteConfirm !== deleteTarget.email}>{deleteSubmitting ? "삭제 중..." : "이 계정을 영구 삭제"}</button></div>
+          </div>
+        </div>
+      )}
+
+      {resetRecordsOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !resetRecordsSubmitting) closeResetRecords(); }}>
+          <div className="modal-card destructive-modal" role="alertdialog" aria-modal="true" aria-labelledby="reset-records-title">
+            <button type="button" className="modal-close" aria-label="닫기" onClick={closeResetRecords} disabled={resetRecordsSubmitting}>×</button>
+            <p className="eyebrow">PERMANENT DELETE</p>
+            <h2 id="reset-records-title">기록 초기화</h2>
+            <dl className="reset-target-details">
+              <div><dt>학년도</dt><dd>{resetRecordsYear}년</dd></div><div><dt>학기</dt><dd>{resetRecordsSemester}학기</dd></div>
+            </dl>
+            <p className="destructive-warning">이 작업은 되돌릴 수 없습니다. 해당 학기의 훈계·칭찬 점수, 출결 기록, 그리고 그로부터 생성된 학부모 알림이 전부 영구 삭제됩니다.</p>
+            <label htmlFor="reset-records-confirm">계속하려면 &ldquo;{resetRecordsConfirmText}&rdquo;를 정확히 입력하세요.</label>
+            <input id="reset-records-confirm" value={resetRecordsConfirm} onChange={(e) => setResetRecordsConfirm(e.target.value)} autoFocus />
+            {resetRecordsFeedback && <p role="alert" className={resetRecordsFeedback.type === "success" ? "success-message" : "form-error"}>{resetRecordsFeedback.text}</p>}
+            <div className="modal-actions"><button type="button" className="secondary" onClick={closeResetRecords} disabled={resetRecordsSubmitting}>취소</button><button type="button" className="danger-button" onClick={resetRecords} disabled={resetRecordsSubmitting || resetRecordsConfirm !== resetRecordsConfirmText}>{resetRecordsSubmitting ? "삭제 중..." : "영구 삭제"}</button></div>
           </div>
         </div>
       )}

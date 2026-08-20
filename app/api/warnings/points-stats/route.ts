@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
+import { sortGrades } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -60,5 +61,5 @@ export async function GET(req: Request) {
     graceTotal: graceTotals.get(student.id) || 0,
   }));
 
-  return NextResponse.json({ students: rows, grades: Array.from(new Set((students || []).map((s: any) => s.grade))).sort() });
+  return NextResponse.json({ students: rows, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
 }

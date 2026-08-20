@@ -5,6 +5,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { buildAttendanceReasonTemplate, hasMeaningfulReasonAfterTemplate, attendanceReasonErrorMessage } from "@/lib/attendance/reasons";
 import { ATTENDANCE_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceCellChange, type AttendanceGridStudent, type AttendanceStatus } from "@/lib/attendance/types";
+import { sortGrades } from "@/lib/grade-sort";
 
 const now = new Date();
 const cellKey = (studentId: string, date: string) => `${studentId}:${date}`;
@@ -53,7 +54,7 @@ export default function AttendanceManager({ role }: { role: string }) {
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh({ channelName: `attendance-manager-${role}`, tables: [{ table: "attendance_entries" }, { table: "students" }, { table: "parent_students" }], onRefresh: () => { void load(); } });
 
-  const grades = useMemo(() => Array.from(new Set(rows.map((r) => r.grade))).sort(), [rows]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(rows.map((r) => r.grade)))), [rows]);
   const baseStatus = useCallback((row: AttendanceGridStudent, date: string) => row.daily[date] || "present", []);
   const cellValue = useCallback((row: AttendanceGridStudent, date: string) => draft[cellKey(row.id, date)] ?? baseStatus(row, date), [draft, baseStatus]);
 

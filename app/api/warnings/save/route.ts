@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendNoticePushes } from "@/lib/push/send";
+import { sendNoticePushes, notifyStaffOfDisciplinePoint } from "@/lib/push/send";
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { buildWarningNotice, changeType } from "@/lib/warnings/format";
@@ -204,6 +204,7 @@ export async function POST(req: Request) {
           const push = await sendNoticePushes(item.notice);
           const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", item.studentId);
           if (error) console.error("warning-push-count-update-failed", { batchId, noticeId: item.notice.id, code: error.code, message: error.message });
+          if (kind === "discipline") await notifyStaffOfDisciplinePoint(item.notice, a.user.id);
         } catch (error) {
           console.error("warning-push-background-failed", { batchId, noticeId: item.notice.id, message: error instanceof Error ? error.message : "unknown" });
         }
