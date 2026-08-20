@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
-import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS } from "@/lib/attendance/schoolDays";
+import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS, computePresentEstimate } from "@/lib/attendance/schoolDays";
 import { sortGrades } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
@@ -41,7 +41,11 @@ export async function GET(req: Request) {
   }
 
   const summaries = summarizeAttendanceForStudents(entries, ids);
-  const { data: term } = await a.supabase.from("academic_terms").select("total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle();
+  const [{ data: term }, { data: exceptionRows }] = await Promise.all([
+    a.supabase.from("academic_terms").select("start_date,end_date,total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle(),
+    a.supabase.from("academic_calendar_exceptions").select("date").eq("academic_year", year),
+  ]);
+  const exceptionDates = new Set((exceptionRows || []).map((r: any) => r.date));
   const totalInstructionalDays = term?.total_instructional_days ?? DEFAULT_TOTAL_INSTRUCTIONAL_DAYS;
   const rows = (students || []).map((student: any) => {
     const summary = summaries[student.id];
@@ -51,7 +55,7 @@ export async function GET(req: Request) {
       grade: student.grade,
       homeroom: student.homeroom,
       parentCount: Array.isArray(student.parent_students) ? student.parent_students.length : 0,
-      presentEstimate: Math.max(0, totalInstructionalDays - (summary?.semesterTotal || 0)),
+      presentEstimate: computePresentEstimate({ term: term || null, exceptionDates, semesterExceptionTotal: summary?.semesterTotal || 0 }),
       ...summary,
     };
   });
