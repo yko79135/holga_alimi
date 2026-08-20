@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
-import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS } from "@/lib/attendance/schoolDays";
+import { computePresentEstimate } from "@/lib/attendance/schoolDays";
 
 export const runtime = "nodejs";
 
@@ -39,11 +39,15 @@ export async function GET(req: Request) {
   }
 
   const summaries = summarizeAttendanceForStudents(entries, ids);
-  const { data: term } = await supabase.from("academic_terms").select("total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle();
-  const totalInstructionalDays = term?.total_instructional_days ?? DEFAULT_TOTAL_INSTRUCTIONAL_DAYS;
+  const [{ data: term }, { data: exceptionRows }] = await Promise.all([
+    supabase.from("academic_terms").select("start_date,end_date,total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle(),
+    supabase.from("academic_calendar_exceptions").select("date").eq("academic_year", year),
+  ]);
+  const exceptionDates = new Set((exceptionRows || []).map((r: any) => r.date));
   const rows = students.map((s: any) => {
     const summary = summaries[s.id];
-    return { id: s.id, name: s.name, grade: s.grade, homeroom: s.homeroom, presentEstimate: Math.max(0, totalInstructionalDays - (summary?.semesterTotal || 0)), ...summary };
+    const presentEstimate = computePresentEstimate({ term: term || null, exceptionDates, semesterExceptionTotal: summary?.semesterTotal || 0 });
+    return { id: s.id, name: s.name, grade: s.grade, homeroom: s.homeroom, presentEstimate, ...summary };
   });
 
   return NextResponse.json({ students: rows });
