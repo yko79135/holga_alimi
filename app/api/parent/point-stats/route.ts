@@ -27,20 +27,24 @@ export async function GET(req: Request) {
 
   let disciplineEntries: any[] = [];
   let praiseEntries: any[] = [];
+  let graceEntries: any[] = [];
   if (ids.length) {
     const { data, error } = await supabase
       .from("warning_entries")
-      .select("student_id,month,delta,kind")
+      .select("student_id,month,delta,kind,entry_type")
       .in("student_id", ids)
       .eq("academic_year", year)
       .eq("semester", semester);
     if (error) return NextResponse.json({ error: "통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
     disciplineEntries = (data || []).filter((entry: any) => entry.kind !== "praise");
     praiseEntries = (data || []).filter((entry: any) => entry.kind === "praise");
+    graceEntries = (data || []).filter((entry: any) => entry.entry_type === "grace_conversion" && entry.kind !== "praise");
   }
 
   const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
   const praiseSummaries = summarizeWarningsForStudents(praiseEntries, ids);
+  const graceTotals = new Map<string, number>();
+  for (const entry of graceEntries) graceTotals.set(entry.student_id, (graceTotals.get(entry.student_id) || 0) + Math.abs(Number(entry.delta || 0)));
   const rows = students.map((s: any) => ({
     id: s.id,
     name: s.name,
@@ -48,6 +52,7 @@ export async function GET(req: Request) {
     homeroom: s.homeroom,
     discipline: disciplineSummaries[s.id],
     praise: praiseSummaries[s.id],
+    graceTotal: graceTotals.get(s.id) || 0,
   }));
 
   return NextResponse.json({ students: rows });

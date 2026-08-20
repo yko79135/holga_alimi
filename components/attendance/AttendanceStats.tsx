@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ATTENDANCE_EXCEPTION_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceExceptionStatus } from "@/lib/attendance/types";
 import type { MonthlyAttendanceBreakdown } from "@/lib/attendance/stats";
+import { sortGrades } from "@/lib/grade-sort";
 
 type StatsStudent = {
   id: string;
@@ -73,7 +74,7 @@ export default function AttendanceStats({ role }: { role: string }) {
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh({ channelName: `attendance-stats-${role}`, tables: [{ table: "attendance_entries" }, { table: "students" }], onRefresh: () => { void load(); } });
 
-  const grades = useMemo(() => Array.from(new Set(rows.map((row) => row.grade))).sort(), [rows]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(rows.map((row) => row.grade)))), [rows]);
   const totalExceptions = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
 
   return (

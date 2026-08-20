@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidInviteReason, MAX_CHILDREN_PER_SIGNUP } from "@/lib/invites";
+import { sortGrades } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
   // currently exist," not an authoritative list. The signup form falls back to free-text entry
   // for a grade that isn't in this list yet (e.g. a brand-new incoming class with no students).
   const { data: gradeRows } = await admin.from("students").select("grade").eq("active", true);
-  const grades = Array.from(new Set((gradeRows || []).map((row: any) => row.grade))).sort();
+  const grades = sortGrades(Array.from(new Set((gradeRows || []).map((row: any) => row.grade))));
 
   return NextResponse.json({ valid: true, grades });
 }

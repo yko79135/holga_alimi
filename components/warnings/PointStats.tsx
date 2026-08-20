@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import type { MonthlyWarningBreakdown, WarningStudentSummary } from "@/lib/warnings/stats";
+import { sortGrades } from "@/lib/grade-sort";
 
 type AuditEntry = {
   id: string;
@@ -15,6 +16,7 @@ type AuditEntry = {
   teacher_note: string | null;
   created_at: string;
   profiles?: { full_name: string } | null;
+  class_periods?: { name: string } | null;
 };
 
 type StatsStudent = {
@@ -142,7 +144,7 @@ export default function PointStats({ role }: { role: string }) {
     }
   }
 
-  const grades = useMemo(() => Array.from(new Set(rows.map((row) => row.grade))).sort(), [rows]);
+  const grades = useMemo(() => sortGrades(Array.from(new Set(rows.map((row) => row.grade)))), [rows]);
   const disciplineTotal = rows.reduce((sum, row) => sum + (row.discipline?.semesterTotal || 0), 0);
   const praiseTotal = rows.reduce((sum, row) => sum + (row.praise?.semesterTotal || 0), 0);
   const columnCount = 7;
@@ -243,12 +245,13 @@ export default function PointStats({ role }: { role: string }) {
                                 <h4>훈계 점수</h4>
                                 {disciplineEntries.length ? (
                                   <table className="attendance-stats-detail">
-                                    <thead><tr><th>적용 점수</th><th>날짜</th><th>사유</th><th>총 점수</th></tr></thead>
+                                    <thead><tr><th>적용 점수</th><th>날짜</th><th>수업</th><th>사유</th><th>총 점수</th></tr></thead>
                                     <tbody>
                                       {disciplineEntries.map(({ entry, total }) => (
                                         <tr key={entry.id}>
                                           <td>{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</td>
                                           <td>{entryDateLabel(entry)}</td>
+                                          <td>{entry.class_periods?.name || "-"}</td>
                                           <td>{entry.parent_visible_reason || entry.category || "사유 없음"}</td>
                                           <td><b>{total}점</b></td>
                                         </tr>
@@ -263,12 +266,13 @@ export default function PointStats({ role }: { role: string }) {
                                 <h4>칭찬 점수</h4>
                                 {praiseEntries.length ? (
                                   <table className="attendance-stats-detail">
-                                    <thead><tr><th>적용 점수</th><th>날짜</th><th>사유</th><th>총 점수</th></tr></thead>
+                                    <thead><tr><th>적용 점수</th><th>날짜</th><th>수업</th><th>사유</th><th>총 점수</th></tr></thead>
                                     <tbody>
                                       {praiseEntries.map(({ entry, total }) => (
                                         <tr key={entry.id}>
                                           <td>{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</td>
                                           <td>{entryDateLabel(entry)}</td>
+                                          <td>{entry.class_periods?.name || "-"}</td>
                                           <td>{entry.parent_visible_reason || entry.category || "사유 없음"}</td>
                                           <td><b>{total}점</b></td>
                                         </tr>
