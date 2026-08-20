@@ -2,15 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import Header from "@/components/Header";
+import ParentDashboard from "@/components/ParentDashboard";
+import StaffDashboard from "@/components/StaffDashboard";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, resolveDashboardView } from "@/lib/roles";
-
-// Code-split by view so a notification deep link only downloads the dashboard it's actually
-// landing on (parent or staff), not both -- this is the biggest lever on first-paint time for a
-// cold PWA launch from a push notification tap.
-const ParentDashboard = dynamic(() => import("@/components/ParentDashboard"));
-const StaffDashboard = dynamic(() => import("@/components/StaffDashboard"));
 
 export default function DashboardShell({ userId, name, roles, legacyRole, initialView }: { userId: string; name: string; roles: AppRole[]; legacyRole?: string | null; initialView?: string | null }) {
   const searchParams = useSearchParams();
@@ -24,9 +19,14 @@ export default function DashboardShell({ userId, name, roles, legacyRole, initia
   const canParent = canUseParentView(roles);
 
   useEffect(() => {
+    // An explicit ?view= in the URL -- notably a push notification's deep link -- always wins
+    // over the remembered last-used view; otherwise a dual-role account whose last session was
+    // on the staff view would have that immediately overwrite the "parent" view a notification
+    // tap just asked for, before ParentDashboard ever gets a chance to open the notice.
+    if (initialView) return;
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
     if (saved) setView(resolveDashboardView(roles, saved, legacyRole));
-  }, [storageKey, roles, legacyRole]);
+  }, [storageKey, roles, legacyRole, initialView]);
 
   function changeView(next: DashboardView) {
     const resolved = resolveDashboardView(roles, next, legacyRole);
