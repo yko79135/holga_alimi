@@ -978,6 +978,8 @@ h3 {
   }
   .topbar {
     align-items: flex-start;
+    flex-wrap: wrap;
+    row-gap: 10px;
   }
   .topbar h1 {
     font-size: 19px;
@@ -990,8 +992,15 @@ h3 {
     height: 32px;
   }
   .topbar-actions {
-    flex-direction: column;
-    align-items: flex-end;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .view-switcher .filter,
+  .topbar-actions .secondary {
+    white-space: nowrap;
   }
   .dashboard-layout,
   .staff-wrap,
