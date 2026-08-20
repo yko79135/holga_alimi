@@ -5,7 +5,6 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ATTENDANCE_EXCEPTION_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceExceptionStatus } from "@/lib/attendance/types";
 import type { MonthlyAttendanceBreakdown } from "@/lib/attendance/stats";
 import { sortGrades } from "@/lib/grade-sort";
-import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
 
 type StatsStudent = {
   id: string;
@@ -79,8 +78,6 @@ export default function AttendanceStats({ role }: { role: string }) {
   const totalExceptions = rows.reduce((sum, row) => sum + row.semesterTotal, 0);
 
   return (
-    <>
-    {role === "admin" && <AcademicCalendarUpload />}
     <section className="content-card">
       <div className="section-heading">
         <div>
@@ -176,6 +173,5 @@ export default function AttendanceStats({ role }: { role: string }) {
         </table>
       </div>
     </section>
-    </>
   );
 }
