@@ -1,19 +1,98 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type CalendarException = { date: string; label: string };
 type CalendarTerm = { semester: 1 | 2; startDate: string; endDate: string };
 type Feedback = { type: "success" | "error"; text: string };
+type TermDates = { startDate: string; endDate: string };
 
 const now = new Date();
+const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function defaultTermDates(academicYear: number): Record<1 | 2, TermDates> {
+  return {
+    1: { startDate: `${academicYear}-03-01`, endDate: `${academicYear}-07-31` },
+    2: { startDate: `${academicYear}-08-01`, endDate: `${academicYear + 1}-02-28` },
+  };
+}
+
+/** Every (year, month) from startISO's month through endISO's month, inclusive. */
+function monthsInRange(startISO: string, endISO: string): { year: number; month: number }[] {
+  const start = new Date(`${startISO}T00:00:00Z`);
+  const end = new Date(`${endISO}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  const months: { year: number; month: number }[] = [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const stop = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  let guard = 0;
+  while (cursor <= stop && guard++ < 24) {
+    months.push({ year: cursor.getUTCFullYear(), month: cursor.getUTCMonth() + 1 });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
+function MonthGrid({ year, month, exceptionMap, onToggle, onLabelChange, onLabelBlur }: {
+  year: number;
+  month: number;
+  exceptionMap: Map<string, string>;
+  onToggle: (date: string) => void;
+  onLabelChange: (date: string, label: string) => void;
+  onLabelBlur: (date: string) => void;
+}) {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const startWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const cells: (number | null)[] = [...Array(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <div className="calendar-month">
+      <h4>{year}년 {month}월</h4>
+      <div className="calendar-grid">
+        {DOW_LABELS.map((d, i) => <div key={d} className={`calendar-dow ${i === 0 || i === 6 ? "weekend" : ""}`}>{d}</div>)}
+        {cells.map((day, i) => {
+          if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" />;
+          const dateISO = `${year}-${pad(month)}-${pad(day)}`;
+          const isWeekend = i % 7 === 0 || i % 7 === 6;
+          const label = exceptionMap.get(dateISO);
+          const isException = label !== undefined;
+          return (
+            <div
+              key={dateISO}
+              className={`calendar-day ${isWeekend ? "weekend" : ""} ${isException ? "exception" : ""}`}
+              role={isWeekend ? undefined : "button"}
+              tabIndex={isWeekend ? undefined : 0}
+              onClick={() => !isWeekend && onToggle(dateISO)}
+              onKeyDown={(e) => { if (!isWeekend && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(dateISO); } }}
+            >
+              <span className="calendar-day-num">{day}</span>
+              {isException && (
+                <input
+                  className="calendar-day-label"
+                  value={label}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => onLabelChange(dateISO, e.target.value)}
+                  onBlur={() => onLabelBlur(dateISO)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function AcademicCalendarUpload() {
   const [academicYear, setAcademicYear] = useState(now.getFullYear());
+  const [semester, setSemester] = useState<1 | 2>(now.getMonth() < 7 ? 1 : 2);
   const [exceptions, setExceptions] = useState<CalendarException[]>([]);
-  const [terms, setTerms] = useState<Record<1 | 2, { startDate: string; endDate: string }>>({ 1: { startDate: "", endDate: "" }, 2: { startDate: "", endDate: "" } });
-  const [newDate, setNewDate] = useState("");
-  const [newLabel, setNewLabel] = useState("");
+  const [terms, setTerms] = useState<Record<1 | 2, TermDates>>(defaultTermDates(now.getFullYear()));
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,8 +105,11 @@ export default function AcademicCalendarUpload() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "학사일정을 불러오지 못했습니다.");
       setExceptions(result.exceptions || []);
-      const nextTerms: Record<1 | 2, { startDate: string; endDate: string }> = { 1: { startDate: "", endDate: "" }, 2: { startDate: "", endDate: "" } };
-      for (const t of result.terms || []) if (t.semester === 1 || t.semester === 2) nextTerms[t.semester as 1 | 2] = { startDate: t.startDate || "", endDate: t.endDate || "" };
+      const fallback = defaultTermDates(year);
+      const nextTerms: Record<1 | 2, TermDates> = { 1: fallback[1], 2: fallback[2] };
+      for (const t of result.terms || []) if (t.semester === 1 || t.semester === 2) {
+        nextTerms[t.semester as 1 | 2] = { startDate: t.startDate || fallback[t.semester as 1 | 2].startDate, endDate: t.endDate || fallback[t.semester as 1 | 2].endDate };
+      }
       setTerms(nextTerms);
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "학사일정을 불러오지 못했습니다." });
@@ -36,7 +118,14 @@ export default function AcademicCalendarUpload() {
     }
   }, []);
 
-  useEffect(() => { void loadSaved(academicYear); }, [academicYear, loadSaved]);
+  // uploadPdf sets academicYear itself when the PDF is for a different year than currently
+  // selected; skip the resulting auto-reload once so it doesn't immediately overwrite the
+  // freshly parsed (not yet saved) preview with whatever's already on file for that year.
+  const skipNextLoad = useRef(false);
+  useEffect(() => {
+    if (skipNextLoad.current) { skipNextLoad.current = false; return; }
+    void loadSaved(academicYear);
+  }, [academicYear, loadSaved]);
 
   async function uploadPdf(file: File) {
     setParsing(true);
@@ -47,12 +136,14 @@ export default function AcademicCalendarUpload() {
       const response = await fetch("/api/admin/academic-calendar/parse", { method: "POST", body });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "PDF를 분석하지 못했습니다.");
+      if (result.academicYear !== academicYear) skipNextLoad.current = true;
       setAcademicYear(result.academicYear);
       setExceptions(result.exceptions || []);
-      const nextTerms: Record<1 | 2, { startDate: string; endDate: string }> = { 1: { startDate: "", endDate: "" }, 2: { startDate: "", endDate: "" } };
-      for (const t of result.terms || []) if (t.semester === 1 || t.semester === 2) nextTerms[t.semester as 1 | 2] = { startDate: t.startDate, endDate: t.endDate };
+      const fallback = defaultTermDates(result.academicYear);
+      const nextTerms: Record<1 | 2, TermDates> = { 1: fallback[1], 2: fallback[2] };
+      for (const t of result.terms || []) if (t.semester === 1 || t.semester === 2) nextTerms[t.semester as 1 | 2] = { startDate: t.startDate || fallback[t.semester as 1 | 2].startDate, endDate: t.endDate || fallback[t.semester as 1 | 2].endDate };
       setTerms(nextTerms);
-      setFeedback({ type: "success", text: `${result.academicYear}학년도 학사일정에서 휴교일 ${(result.exceptions || []).length}건을 찾았습니다. 아래 목록을 확인·수정한 후 저장해 주세요.` });
+      setFeedback({ type: "success", text: `${result.academicYear}학년도 학사일정에서 휴교일 ${(result.exceptions || []).length}건을 찾아 아래 캘린더에 반영했습니다. 달력을 확인하고, 잘못된 날짜는 클릭해서 다시 등교일로 바꾼 후 저장해 주세요.` });
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "PDF를 분석하지 못했습니다." });
     } finally {
@@ -60,15 +151,19 @@ export default function AcademicCalendarUpload() {
     }
   }
 
-  function removeException(date: string) {
-    setExceptions((current) => current.filter((e) => e.date !== date));
+  function toggleDay(dateISO: string) {
+    setExceptions((current) => {
+      if (current.some((e) => e.date === dateISO)) return current.filter((e) => e.date !== dateISO);
+      return [...current, { date: dateISO, label: "휴교" }].sort((a, b) => a.date.localeCompare(b.date));
+    });
   }
 
-  function addException() {
-    if (!newDate || !newLabel.trim()) return;
-    setExceptions((current) => [...current.filter((e) => e.date !== newDate), { date: newDate, label: newLabel.trim() }].sort((a, b) => a.date.localeCompare(b.date)));
-    setNewDate("");
-    setNewLabel("");
+  function updateLabel(dateISO: string, label: string) {
+    setExceptions((current) => current.map((e) => (e.date === dateISO ? { ...e, label } : e)));
+  }
+
+  function blurLabel(dateISO: string) {
+    setExceptions((current) => current.map((e) => (e.date === dateISO && !e.label.trim() ? { ...e, label: "휴교" } : e)));
   }
 
   async function save() {
@@ -93,18 +188,23 @@ export default function AcademicCalendarUpload() {
     }
   }
 
+  const exceptionMap = useMemo(() => new Map(exceptions.map((e) => [e.date, e.label])), [exceptions]);
+  const visibleMonths = useMemo(() => monthsInRange(terms[semester].startDate, terms[semester].endDate), [terms, semester]);
+  const semesterExceptionCount = useMemo(() => exceptions.filter((e) => e.date >= terms[semester].startDate && e.date <= terms[semester].endDate).length, [exceptions, terms, semester]);
+
   return (
     <section className="content-card">
       <div className="section-heading">
         <div>
           <p className="eyebrow">ACADEMIC CALENDAR</p>
-          <h2>학사일정 업로드</h2>
-          <p className="muted">학사일정 PDF를 업로드하면 휴교일(방학·재량휴교·공휴일)을 자동으로 찾아 아래에 보여줍니다. 자동 인식은 완벽하지 않을 수 있으니, 저장 전 목록을 꼭 확인하고 필요하면 직접 추가·삭제해 주세요.</p>
+          <h2>학사일정</h2>
+          <p className="muted">학사일정 PDF를 업로드하면 휴교일(방학·재량휴교·공휴일)을 자동으로 찾아 아래 캘린더에 반영합니다. 자동 인식은 완벽하지 않을 수 있으니 저장 전 꼭 확인해 주세요. 평일 칸을 클릭하면 등교일 ↔ 휴교일이 전환되고, 휴교일 칸의 사유는 직접 입력해 고칠 수 있습니다.</p>
         </div>
       </div>
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={academicYear} onChange={(e) => setAcademicYear(Number(e.target.value))} /></label>
+        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value) as 1 | 2)}><option value={1}>1학기</option><option value={2}>2학기</option></select></label>
         <label>PDF 업로드
           <input type="file" accept="application/pdf" disabled={parsing} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadPdf(file); e.target.value = ""; }} />
         </label>
@@ -115,35 +215,16 @@ export default function AcademicCalendarUpload() {
       {feedback && <p className={feedback.type === "success" ? "success-message" : "form-error"}>{feedback.text}</p>}
 
       <div className="two-columns">
-        {([1, 2] as const).map((s) => (
-          <div key={s} className="account-meta">
-            <strong>{s}학기</strong>
-            <label>시작일<input type="date" value={terms[s].startDate} onChange={(e) => setTerms((current) => ({ ...current, [s]: { ...current[s], startDate: e.target.value } }))} /></label>
-            <label>종료일<input type="date" value={terms[s].endDate} onChange={(e) => setTerms((current) => ({ ...current, [s]: { ...current[s], endDate: e.target.value } }))} /></label>
-          </div>
+        <label>{semester}학기 시작일<input type="date" value={terms[semester].startDate} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], startDate: e.target.value } }))} /></label>
+        <label>{semester}학기 종료일<input type="date" value={terms[semester].endDate} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], endDate: e.target.value } }))} /></label>
+      </div>
+      <p className="muted">{semester}학기 휴교일 {semesterExceptionCount}건</p>
+
+      <div className="calendar-months">
+        {visibleMonths.map(({ year, month }) => (
+          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionMap={exceptionMap} onToggle={toggleDay} onLabelChange={updateLabel} onLabelBlur={blurLabel} />
         ))}
-      </div>
-
-      <div className="warning-toolbar">
-        <label>날짜<input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} /></label>
-        <label>사유<input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="예: 재량휴교" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addException(); } }} /></label>
-        <button type="button" className="secondary" onClick={addException} disabled={!newDate || !newLabel.trim()}>휴교일 추가</button>
-      </div>
-
-      <div className="warning-grid-wrap">
-        <table className="warning-grid">
-          <thead><tr><th>날짜</th><th>사유</th><th></th></tr></thead>
-          <tbody>
-            {exceptions.map((e) => (
-              <tr key={e.date}>
-                <td>{e.date}</td>
-                <td>{e.label}</td>
-                <td><button type="button" className="secondary" onClick={() => removeException(e.date)}>삭제</button></td>
-              </tr>
-            ))}
-            {!exceptions.length && <tr><td colSpan={3} className="empty-state">등록된 휴교일이 없습니다.</td></tr>}
-          </tbody>
-        </table>
+        {!visibleMonths.length && <p className="muted">학기 시작일과 종료일을 확인해 주세요.</p>}
       </div>
 
       <div className="warning-actions">
