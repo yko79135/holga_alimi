@@ -208,9 +208,9 @@ export default function PointStats({ role }: { role: string }) {
                           {draftUnits > 0 && <span className="muted"> · +{draftUnits} 대기 (칭찬 -{draftUnits * GRACE_UNIT_PRAISE_COST}, 훈계 -{draftUnits})</span>}
                         </div>
                         <div className="grace-stepper-controls">
+                          <button type="button" className="secondary" onClick={() => applyGrace(row)} disabled={draftUnits <= 0 || applyingGraceId === row.id}>{applyingGraceId === row.id ? "적용 중..." : "적용"}</button>
                           <button type="button" className="grace-arrow" onClick={() => bumpGrace(row.id, 1)} disabled={!canIncrease} aria-label="희월 올리기">▲</button>
                           <button type="button" className="grace-arrow" onClick={() => bumpGrace(row.id, -1)} disabled={draftUnits <= 0} aria-label="희월 내리기">▼</button>
-                          <button type="button" className="secondary" onClick={() => applyGrace(row)} disabled={draftUnits <= 0 || applyingGraceId === row.id}>{applyingGraceId === row.id ? "적용 중..." : "적용"}</button>
                         </div>
                         {message && <p className={message.type === "success" ? "success-message" : "form-error"}>{message.text}</p>}
                       </div>
