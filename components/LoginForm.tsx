@@ -19,6 +19,7 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const redirectedFromNotice = !!safeNextPath(searchParams.get("next"));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -65,6 +66,9 @@ export default function LoginForm() {
       <p className="eyebrow">SCHOOL FAMILY PORTAL</p>
       <h1>{process.env.NEXT_PUBLIC_SCHOOL_NAME || "우리학교 학부모 포털"}</h1>
       <p className="muted">학교에서 발송한 가정통신문과 자녀별 안내를 확인하세요.</p>
+      {redirectedFromNotice && (
+        <p className="login-notice">로그인 세션이 만료되어 다시 로그인이 필요합니다. 로그인하면 보시려던 알림으로 자동 이동합니다.</p>
+      )}
 
       <label>이메일</label>
       <input

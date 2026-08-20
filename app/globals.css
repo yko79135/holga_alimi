@@ -314,6 +314,16 @@ h3 {
   color: var(--muted);
   margin: 18px 0 0;
 }
+.login-notice {
+  background: var(--mint-100);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal-900);
+  margin: 4px 0 18px;
+}
 .dashboard-layout {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
