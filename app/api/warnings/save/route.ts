@@ -163,7 +163,7 @@ export async function POST(req: Request) {
 
   let notices = 0, recipients = 0;
   const missing: string[] = [];
-  const createdNotices: Array<{ notice: { id: string; target_scope: string; target_grade: string | null; title: string; body: string; created_by: string }; studentId: string }> = [];
+  const createdNotices: Array<{ notice: { id: string; target_scope: string; target_grade: string | null; title: string; body: string; created_by: string }; studentId: string; parentIds: string[] }> = [];
   for (const studentId of affectedStudentIds) {
     const student = (submittedStudentsRes.data || []).find((s: any) => s.id === studentId);
     const perStudentChanges = changes.filter((change) => change.studentId === studentId);
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
     if (generatedRes.error || !generatedRes.data) logWarningSaveDiagnostic({ ...baseDiagnostic, batchId, operation: "upsert", table: "warning_generated_notices", errorCode: generatedRes.error?.code, errorMessage: generatedRes.error?.message, insertedRowCount: entryRes.data.length });
     notices++;
     recipients += recipientCount;
-    createdNotices.push({ notice: { ...noticeRes.data, title: content.title, body: content.body, created_by: a.user.id }, studentId });
+    createdNotices.push({ notice: { ...noticeRes.data, title: content.title, body: content.body, created_by: a.user.id }, studentId, parentIds: Array.from(uniqueParents) });
   }
 
   const parentIds = Array.from(new Set((linksRes.data || []).map((link: any) => link.parent_id).filter(Boolean)));
@@ -204,7 +204,7 @@ export async function POST(req: Request) {
           const push = await sendNoticePushes(item.notice);
           const { error } = await admin.from("warning_generated_notices").update({ push_sent_count: push.sent, push_failed_count: push.failed }).eq("batch_id", batchId).eq("student_id", item.studentId);
           if (error) console.error("warning-push-count-update-failed", { batchId, noticeId: item.notice.id, code: error.code, message: error.message });
-          if (kind === "discipline") await notifyStaffOfDisciplinePoint(item.notice, a.user.id);
+          if (kind === "discipline") await notifyStaffOfDisciplinePoint(item.notice, a.user.id, item.parentIds);
         } catch (error) {
           console.error("warning-push-background-failed", { batchId, noticeId: item.notice.id, message: error instanceof Error ? error.message : "unknown" });
         }

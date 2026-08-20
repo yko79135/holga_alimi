@@ -106,10 +106,17 @@ export async function sendNoticePushes(notice: Notice): Promise<PushResult> {
 }
 
 /** Pushes a discipline-point notice to every teacher/admin except whoever granted the point, so
- * the rest of staff hears about every discipline point as it happens, not just the parent. */
-export async function notifyStaffOfDisciplinePoint(notice: Pick<Notice, "id" | "title" | "body">, authorId: string | null): Promise<PushResult> {
+ * the rest of staff hears about every discipline point as it happens, not just the parent. Also
+ * excludes anyone in `excludeIds` (the notice's own parent-recipients) -- a dual-role account
+ * (teacher who is also that student's parent) would otherwise get both the parent-facing push
+ * and this staff broadcast for the same notice id, and since both share that id as their
+ * notification `tag`, the second one silently overwrites the first's title/body/deep-link on the
+ * device instead of showing as a separate notification. */
+export async function notifyStaffOfDisciplinePoint(notice: Pick<Notice, "id" | "title" | "body">, authorId: string | null, excludeIds: string[] = []): Promise<PushResult> {
   const staffIds = await resolveStaffRecipientIds();
-  const recipients = authorId ? staffIds.filter((id) => id !== authorId) : staffIds;
+  const exclude = new Set(excludeIds);
+  if (authorId) exclude.add(authorId);
+  const recipients = staffIds.filter((id) => !exclude.has(id));
   return pushToUserIds(recipients, buildStaffNoticePayload(notice));
 }
 
