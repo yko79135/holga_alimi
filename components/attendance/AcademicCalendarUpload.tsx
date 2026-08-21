@@ -34,6 +34,13 @@ function daysBetween(startISO: string, endISO: string): number {
   return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 }
 
+/** The 1st of dateISO's month -- the term's actual start date can fall mid-month (e.g. semester 2
+ * officially starting 8/26), but the calendar still renders that whole month starting from the
+ * 1st, so "visible" for label purposes has to mean the rendered month, not the exact term date. */
+function startOfMonth(dateISO: string): string {
+  return `${dateISO.slice(0, 7)}-01`;
+}
+
 function defaultAutumnTerm(academicYear: number): TermDates {
   return { startDate: `${academicYear}-08-01`, endDate: `${academicYear + 1}-02-28` };
 }
@@ -218,7 +225,11 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
   // true start date (which may fall before the visible calendar, e.g. a break that started last
   // month). showLabel marks only the run's *first visible* day -- the earliest day of that run
   // that's actually on-screen -- so the label appears once per run instead of once per week row,
-  // while still showing up even when the run's true start is scrolled off before term.startDate.
+  // while still showing up even when the run's true start is scrolled off before the first
+  // rendered month (the visibility floor is that month's 1st, not the exact term start date --
+  // e.g. semester 2 officially starting 8/26 shouldn't hide 여름방학 days earlier in August, since
+  // the whole month still renders).
+  const visibleFloor = startOfMonth(term.startDate);
   const exceptionInfo = useMemo(() => {
     const sorted = [...exceptions].sort((a, b) => a.date.localeCompare(b.date));
     const runIdByDate = new Map<string, string>();
@@ -236,7 +247,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
     }
     const firstVisibleDateByRun = new Map<string, string>();
     for (const e of sorted) {
-      if (e.date < term.startDate) continue;
+      if (e.date < visibleFloor) continue;
       const id = runIdByDate.get(e.date)!;
       if (!firstVisibleDateByRun.has(id)) firstVisibleDateByRun.set(id, e.date);
     }
@@ -246,7 +257,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
       map.set(e.date, { label: e.label, isClosure: e.isClosure, showLabel: firstVisibleDateByRun.get(id) === e.date });
     }
     return map;
-  }, [exceptions, term.startDate]);
+  }, [exceptions, visibleFloor]);
 
   function findRunBounds(dateISO: string, label: string, isClosure: boolean): { start: string; end: string } {
     let start = dateISO;
