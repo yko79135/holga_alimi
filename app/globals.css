@@ -1143,14 +1143,11 @@ h3 {
   color: var(--danger);
 }
 .calendar-day {
-  min-height: 44px;
+  min-height: 48px;
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 3px 4px;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   background: var(--cream);
 }
 .calendar-day.empty {
@@ -1171,34 +1168,50 @@ h3 {
   font-size: 12px;
   font-weight: 700;
 }
-.calendar-day.exception {
-  background: var(--danger-soft);
-  border-color: var(--danger);
-}
 .calendar-day.exception .calendar-day-num {
   color: var(--danger);
-}
-.calendar-day.event {
-  background: var(--blue-100);
-  border-color: var(--blue-500);
 }
 .calendar-day.event .calendar-day-num {
   color: var(--blue-500);
 }
-.calendar-day-label {
-  display: block;
-  width: 100%;
-  font-size: 10px;
-  padding: 0;
+/* One bar per (week row, run) instead of one mark per date -- since it's a single grid item
+   spanning startCol..endCol, its box naturally covers the grid gap between those columns too,
+   so a multi-day range renders as one continuous rectangle instead of separate day boxes. */
+.calendar-event-bar {
+  align-self: end;
+  height: 16px;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
 }
-.calendar-day.exception .calendar-day-label {
+.calendar-event-bar.exception {
+  background: var(--danger-soft);
+  border-top: 1px solid var(--danger);
+  border-bottom: 1px solid var(--danger);
   color: var(--danger);
 }
-.calendar-day.event .calendar-day-label {
+.calendar-event-bar.event {
+  background: var(--blue-100);
+  border-top: 1px solid var(--blue-500);
+  border-bottom: 1px solid var(--blue-500);
   color: var(--blue-500);
+}
+.calendar-event-bar.round-left {
+  border-left: 1px solid currentColor;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+.calendar-event-bar.round-right {
+  border-right: 1px solid currentColor;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 .day-editor-field {
   display: block;
