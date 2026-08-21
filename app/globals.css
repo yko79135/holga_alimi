@@ -1190,28 +1190,19 @@ h3 {
   font-size: 10px;
   font-weight: 700;
   pointer-events: none;
+  border-radius: 8px;
+  border-width: 1px;
+  border-style: solid;
 }
 .calendar-event-bar.exception {
   background: var(--danger-soft);
-  border-top: 1px solid var(--danger);
-  border-bottom: 1px solid var(--danger);
+  border-color: var(--danger);
   color: var(--danger);
 }
 .calendar-event-bar.event {
   background: var(--blue-100);
-  border-top: 1px solid var(--blue-500);
-  border-bottom: 1px solid var(--blue-500);
+  border-color: var(--blue-500);
   color: var(--blue-500);
-}
-.calendar-event-bar.round-left {
-  border-left: 1px solid currentColor;
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
-}
-.calendar-event-bar.round-right {
-  border-right: 1px solid currentColor;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
 }
 .day-editor-field {
   display: block;
