@@ -1459,11 +1459,16 @@ h3 {
   min-width: 190px;
 }
 .grace-stepper {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
 }
 .grace-stepper-value {
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .grace-stepper-controls {
   display: flex;
@@ -1489,6 +1494,7 @@ h3 {
 .grace-stepper .form-error {
   font-size: 12px;
   margin: 0;
+  flex-basis: 100%;
 }
 .point-history {
   margin-top: 16px;
