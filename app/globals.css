@@ -1003,14 +1003,25 @@ h3 {
   }
   .topbar-actions {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-start;
     width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 3px;
+    scrollbar-width: none;
+  }
+  .topbar-actions::-webkit-scrollbar {
+    display: none;
+  }
+  .view-switcher {
+    flex-shrink: 0;
   }
   .view-switcher .filter,
   .topbar-actions .secondary {
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .dashboard-layout,
   .staff-wrap,
