@@ -54,22 +54,23 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
   return months;
 }
 
-type DayInfo = { label: string; isClosure: boolean };
-type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean };
+type DayInfo = { label: string; isClosure: boolean; showLabel: boolean };
+type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean; showLabel: boolean };
 
 /** Turns a month's day cells into one bar per (week row, same-label/closure run) instead of one
  * mark per date, so a multi-day range renders as a single rectangle spanning its columns -- a
  * CSS grid item spanning multiple column tracks automatically bridges the gap between them, which
  * is what makes the bar look continuous. Bars never span across week rows (or months) -- each
- * row's segment is fully rounded and carries its own label, matching how Google Calendar closes
- * off every week's portion of a multi-week event instead of leaving it visually cut open. */
+ * row's segment is fully rounded, matching how Google Calendar closes off every week's portion of
+ * a multi-week event instead of leaving it visually cut open, but only the segment containing the
+ * run's first visible day (per exceptionInfo.showLabel) carries the text, not every row. */
 function computeBarSegments(cells: (number | null)[], year: number, month: number, exceptionInfo: Map<string, DayInfo>): BarSegment[] {
   const segments: BarSegment[] = [];
-  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; lastCol: number } | null = null;
+  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; lastCol: number; showLabel: boolean } | null = null;
 
   const closeOpen = () => {
     if (!open) return;
-    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure });
+    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure, showLabel: open.showLabel });
     open = null;
   };
 
@@ -84,9 +85,10 @@ function computeBarSegments(cells: (number | null)[], year: number, month: numbe
 
     if (open && open.label === info.label && open.isClosure === info.isClosure) {
       open.lastCol = col;
+      open.showLabel = open.showLabel || info.showLabel;
     } else {
       closeOpen();
-      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, lastCol: col };
+      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, lastCol: col, showLabel: info.showLabel };
     }
   }
   closeOpen();
@@ -143,7 +145,7 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
             className={`calendar-event-bar ${seg.isClosure ? "exception" : "event"}`}
             style={{ gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`, gridRow: seg.weekIndex + 2 }}
           >
-            {seg.label}
+            {seg.showLabel && seg.label}
           </div>
         ))}
       </div>
@@ -211,7 +213,40 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
   }
 
   const byDate = useMemo(() => new Map(exceptions.map((e) => [e.date, e])), [exceptions]);
-  const exceptionInfo = useMemo(() => new Map(exceptions.map((e) => [e.date, { label: e.label, isClosure: e.isClosure }])), [exceptions]);
+
+  // Each date belongs to a "run" of consecutive same-label/closure days, identified by that run's
+  // true start date (which may fall before the visible calendar, e.g. a break that started last
+  // month). showLabel marks only the run's *first visible* day -- the earliest day of that run
+  // that's actually on-screen -- so the label appears once per run instead of once per week row,
+  // while still showing up even when the run's true start is scrolled off before term.startDate.
+  const exceptionInfo = useMemo(() => {
+    const sorted = [...exceptions].sort((a, b) => a.date.localeCompare(b.date));
+    const runIdByDate = new Map<string, string>();
+    let runId = "";
+    let prevDate: string | null = null;
+    let prevLabel = "";
+    let prevIsClosure = false;
+    for (const e of sorted) {
+      const isContinuation = prevDate !== null && addDaysISO(prevDate, 1) === e.date && prevLabel === e.label && prevIsClosure === e.isClosure;
+      if (!isContinuation) runId = e.date;
+      runIdByDate.set(e.date, runId);
+      prevDate = e.date;
+      prevLabel = e.label;
+      prevIsClosure = e.isClosure;
+    }
+    const firstVisibleDateByRun = new Map<string, string>();
+    for (const e of sorted) {
+      if (e.date < term.startDate) continue;
+      const id = runIdByDate.get(e.date)!;
+      if (!firstVisibleDateByRun.has(id)) firstVisibleDateByRun.set(id, e.date);
+    }
+    const map = new Map<string, DayInfo>();
+    for (const e of sorted) {
+      const id = runIdByDate.get(e.date)!;
+      map.set(e.date, { label: e.label, isClosure: e.isClosure, showLabel: firstVisibleDateByRun.get(id) === e.date });
+    }
+    return map;
+  }, [exceptions, term.startDate]);
 
   function findRunBounds(dateISO: string, label: string, isClosure: boolean): { start: string; end: string } {
     let start = dateISO;
