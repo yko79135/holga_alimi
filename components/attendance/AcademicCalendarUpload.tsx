@@ -54,10 +54,50 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
   return months;
 }
 
-function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
+type DayInfo = { label: string; isClosure: boolean; isRunStart: boolean; isRunEnd: boolean };
+type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean; roundLeft: boolean; roundRight: boolean; showLabel: boolean };
+
+/** Turns a month's day cells into one bar per (week row, same-label/closure run) instead of one
+ * mark per date, so a multi-day range renders as a single rectangle spanning its columns -- a
+ * CSS grid item spanning multiple column tracks automatically bridges the gap between them, which
+ * is what makes the bar look continuous. Bars never span across week rows (or months); a run's
+ * true start/end (from exceptionInfo, computed globally so it's correct at month boundaries too)
+ * gets a rounded cap and the label, a wrapped continuation gets a flat edge and no repeated text. */
+function computeBarSegments(cells: (number | null)[], year: number, month: number, exceptionInfo: Map<string, DayInfo>): BarSegment[] {
+  const segments: BarSegment[] = [];
+  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; roundLeft: boolean; lastCol: number; lastRunEnd: boolean } | null = null;
+
+  const closeOpen = () => {
+    if (!open) return;
+    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure, roundLeft: open.roundLeft, roundRight: open.lastRunEnd, showLabel: open.roundLeft });
+    open = null;
+  };
+
+  for (let i = 0; i < cells.length; i++) {
+    const weekIndex = Math.floor(i / 7);
+    const col = i % 7;
+    if (col === 0) closeOpen(); // bars never span across week rows
+
+    const day = cells[i];
+    const info = day === null ? undefined : exceptionInfo.get(`${year}-${pad(month)}-${pad(day)}`);
+    if (!info) { closeOpen(); continue; }
+
+    if (open && open.label === info.label && open.isClosure === info.isClosure) {
+      open.lastCol = col;
+      open.lastRunEnd = info.isRunEnd;
+    } else {
+      closeOpen();
+      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, roundLeft: info.isRunStart, lastCol: col, lastRunEnd: info.isRunEnd };
+    }
+  }
+  closeOpen();
+  return segments;
+}
+
+function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
   year: number;
   month: number;
-  exceptionMap: Map<string, { label: string; isClosure: boolean; showLabel: boolean }>;
+  exceptionInfo: Map<string, DayInfo>;
   canEdit: boolean;
   onDayClick: (date: string) => void;
 }) {
@@ -65,6 +105,7 @@ function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
   const startWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const cells: (number | null)[] = [...Array(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
+  const barSegments = useMemo(() => computeBarSegments(cells, year, month, exceptionInfo), [cells, year, month, exceptionInfo]);
 
   return (
     <div className="calendar-month">
@@ -75,7 +116,7 @@ function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
           if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" />;
           const dateISO = `${year}-${pad(month)}-${pad(day)}`;
           const isWeekend = i % 7 === 0 || i % 7 === 6;
-          const entry = exceptionMap.get(dateISO);
+          const entry = exceptionInfo.get(dateISO);
           const stateClass = entry ? (entry.isClosure ? "exception" : "event") : "";
           return (
             <div
@@ -87,10 +128,18 @@ function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
               onKeyDown={(e) => { if (canEdit && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDayClick(dateISO); } }}
             >
               <span className="calendar-day-num">{day}</span>
-              {entry?.showLabel && <span className="calendar-day-label">{entry.label}</span>}
             </div>
           );
         })}
+        {barSegments.map((seg) => (
+          <div
+            key={`${seg.weekIndex}-${seg.startCol}`}
+            className={`calendar-event-bar ${seg.isClosure ? "exception" : "event"} ${seg.roundLeft ? "round-left" : ""} ${seg.roundRight ? "round-right" : ""}`}
+            style={{ gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`, gridRow: seg.weekIndex + 2 }}
+          >
+            {seg.showLabel && seg.label}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -157,15 +206,17 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
 
   const byDate = useMemo(() => new Map(exceptions.map((e) => [e.date, e])), [exceptions]);
 
-  // A day's label is only shown when it starts a run (its predecessor isn't the same label/type),
-  // so a multi-day range reads as one line instead of repeating on every date -- the colored
-  // background still marks every day the range covers.
-  const exceptionMap = useMemo(() => {
-    const map = new Map<string, { label: string; isClosure: boolean; showLabel: boolean }>();
+  // isRunStart/isRunEnd mark whether a date's predecessor/successor continues the same
+  // label+closure run, computed globally (not per visible month) so a range spanning a month
+  // boundary still gets correct flat/rounded bar caps in each month's own grid.
+  const exceptionInfo = useMemo(() => {
+    const map = new Map<string, DayInfo>();
     for (const e of exceptions) {
       const prev = byDate.get(addDaysISO(e.date, -1));
-      const isContinuation = !!prev && prev.label === e.label && prev.isClosure === e.isClosure;
-      map.set(e.date, { label: e.label, isClosure: e.isClosure, showLabel: !isContinuation });
+      const next = byDate.get(addDaysISO(e.date, 1));
+      const isRunStart = !(prev && prev.label === e.label && prev.isClosure === e.isClosure);
+      const isRunEnd = !(next && next.label === e.label && next.isClosure === e.isClosure);
+      map.set(e.date, { label: e.label, isClosure: e.isClosure, isRunStart, isRunEnd });
     }
     return map;
   }, [exceptions, byDate]);
@@ -289,7 +340,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
 
       <div className={`calendar-months${canEdit ? "" : " calendar-readonly"}`}>
         {visibleMonths.map(({ year, month }) => (
-          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionMap={exceptionMap} canEdit={canEdit} onDayClick={openDayEditor} />
+          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionInfo={exceptionInfo} canEdit={canEdit} onDayClick={openDayEditor} />
         ))}
         {!visibleMonths.length && <p className="muted">학기 시작일과 종료일을 확인해 주세요.</p>}
       </div>
