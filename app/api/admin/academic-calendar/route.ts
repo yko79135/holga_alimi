@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminJsonError, requireAdmin } from "@/lib/admin/require-admin";
-import { requireStaff, staffJsonError } from "@/lib/admin/require-staff";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -10,27 +10,29 @@ function isDateOnly(value: unknown) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-/** Current saved calendar state for one academic year, so the upload UI can show what's already
- * on file (e.g. after a page refresh) instead of always looking empty. Teachers can view this
- * (read-only in the UI) so they can check the school calendar; only admins can save changes. */
+/** Current saved calendar state for one academic year, so the calendar UI can show what's already
+ * on file (e.g. after a page refresh) instead of always looking empty. School-calendar info isn't
+ * private -- any signed-in account (parent, teacher, or admin) can view it, matching this table's
+ * RLS select policy; only admins can save changes (see POST below). */
 export async function GET(req: Request) {
-  const auth = await requireStaff();
-  if ("error" in auth) return auth.error;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return adminJsonError("로그인이 필요합니다.", 401);
 
   const academicYear = Number(new URL(req.url).searchParams.get("year") || new Date().getFullYear());
-  if (!academicYear) return staffJsonError("학년도를 확인해 주세요.", 400);
+  if (!academicYear) return adminJsonError("학년도를 확인해 주세요.", 400);
 
   const admin = createAdminClient();
   const [exceptionsRes, termsRes] = await Promise.all([
-    admin.from("academic_calendar_exceptions").select("date,label").eq("academic_year", academicYear).order("date"),
+    admin.from("academic_calendar_exceptions").select("date,label,is_closure").eq("academic_year", academicYear).order("date"),
     admin.from("academic_terms").select("semester,start_date,end_date,total_instructional_days").eq("academic_year", academicYear).in("semester", [1, 2]),
   ]);
-  if (exceptionsRes.error) return staffJsonError("학사일정을 불러오지 못했습니다.", 500);
-  if (termsRes.error) return staffJsonError("학기 정보를 불러오지 못했습니다.", 500);
+  if (exceptionsRes.error) return adminJsonError("학사일정을 불러오지 못했습니다.", 500);
+  if (termsRes.error) return adminJsonError("학기 정보를 불러오지 못했습니다.", 500);
 
   return NextResponse.json({
     academicYear,
-    exceptions: exceptionsRes.data || [],
+    exceptions: (exceptionsRes.data || []).map((e: any) => ({ date: e.date, label: e.label, isClosure: e.is_closure })),
     terms: (termsRes.data || []).map((t: any) => ({ semester: t.semester, startDate: t.start_date, endDate: t.end_date, totalInstructionalDays: t.total_instructional_days })),
   });
 }
@@ -50,7 +52,9 @@ export async function POST(req: Request) {
 
   if (!Number.isInteger(academicYear) || academicYear < 2000) return adminJsonError("학년도를 확인해 주세요.", 400);
   for (const e of exceptions) {
-    if (!isDateOnly(e?.date) || typeof e?.label !== "string" || !e.label.trim()) return adminJsonError("휴교일 목록을 확인해 주세요.", 400);
+    if (!isDateOnly(e?.date) || typeof e?.label !== "string" || !e.label.trim() || typeof e?.isClosure !== "boolean") {
+      return adminJsonError("학사일정 목록을 확인해 주세요.", 400);
+    }
   }
   for (const t of terms) {
     if (![1, 2].includes(t?.semester) || !isDateOnly(t?.startDate) || !isDateOnly(t?.endDate) || t.startDate > t.endDate) {
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
   if (deleteRes.error) return adminJsonError("기존 학사일정을 정리하지 못했습니다.", 500);
 
   if (exceptions.length) {
-    const rows = exceptions.map((e: { date: string; label: string }) => ({ date: e.date, academic_year: academicYear, label: e.label.trim(), created_by: auth.user.id }));
+    const rows = exceptions.map((e: { date: string; label: string; isClosure: boolean }) => ({ date: e.date, academic_year: academicYear, label: e.label.trim(), is_closure: e.isClosure, created_by: auth.user.id }));
     const insertRes = await admin.from("academic_calendar_exceptions").insert(rows);
     if (insertRes.error) return adminJsonError("학사일정을 저장하지 못했습니다.", 500);
   }
@@ -77,5 +81,7 @@ export async function POST(req: Request) {
     if (upsertRes.error) return adminJsonError("학기 시작·종료일을 저장하지 못했습니다.", 500);
   }
 
-  return NextResponse.json({ success: true, message: `${academicYear}학년도 학사일정을 저장했습니다. (휴교일 ${exceptions.length}건)`, savedExceptions: exceptions.length });
+  const closureCount = exceptions.filter((e: { isClosure: boolean }) => e.isClosure).length;
+  const eventCount = exceptions.length - closureCount;
+  return NextResponse.json({ success: true, message: `${academicYear}학년도 학사일정을 저장했습니다. (휴교일 ${closureCount}건, 이벤트 ${eventCount}건)`, savedExceptions: exceptions.length });
 }

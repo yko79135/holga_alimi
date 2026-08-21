@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   const summaries = summarizeAttendanceForStudents(entries, ids);
   const [{ data: term }, { data: exceptionRows }] = await Promise.all([
     supabase.from("academic_terms").select("start_date,end_date,total_instructional_days").eq("academic_year", year).eq("semester", semester).maybeSingle(),
-    supabase.from("academic_calendar_exceptions").select("date").eq("academic_year", year),
+    supabase.from("academic_calendar_exceptions").select("date").eq("academic_year", year).eq("is_closure", true),
   ]);
   const exceptionDates = new Set((exceptionRows || []).map((r: any) => r.date));
   const rows = students.map((s: any) => {
