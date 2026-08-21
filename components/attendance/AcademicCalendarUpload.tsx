@@ -37,10 +37,11 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
   return months;
 }
 
-function MonthGrid({ year, month, exceptionMap, onToggle, onLabelChange, onLabelBlur }: {
+function MonthGrid({ year, month, exceptionMap, canEdit, onToggle, onLabelChange, onLabelBlur }: {
   year: number;
   month: number;
   exceptionMap: Map<string, string>;
+  canEdit: boolean;
   onToggle: (date: string) => void;
   onLabelChange: (date: string, label: string) => void;
   onLabelBlur: (date: string) => void;
@@ -61,17 +62,18 @@ function MonthGrid({ year, month, exceptionMap, onToggle, onLabelChange, onLabel
           const isWeekend = i % 7 === 0 || i % 7 === 6;
           const label = exceptionMap.get(dateISO);
           const isException = label !== undefined;
+          const clickable = canEdit && !isWeekend;
           return (
             <div
               key={dateISO}
               className={`calendar-day ${isWeekend ? "weekend" : ""} ${isException ? "exception" : ""}`}
-              role={isWeekend ? undefined : "button"}
-              tabIndex={isWeekend ? undefined : 0}
-              onClick={() => !isWeekend && onToggle(dateISO)}
-              onKeyDown={(e) => { if (!isWeekend && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(dateISO); } }}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={() => clickable && onToggle(dateISO)}
+              onKeyDown={(e) => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(dateISO); } }}
             >
               <span className="calendar-day-num">{day}</span>
-              {isException && (
+              {isException && canEdit && (
                 <input
                   className="calendar-day-label"
                   value={label}
@@ -80,6 +82,7 @@ function MonthGrid({ year, month, exceptionMap, onToggle, onLabelChange, onLabel
                   onBlur={() => onLabelBlur(dateISO)}
                 />
               )}
+              {isException && !canEdit && <span className="calendar-day-label calendar-day-label-static">{label}</span>}
             </div>
           );
         })}
@@ -88,7 +91,7 @@ function MonthGrid({ year, month, exceptionMap, onToggle, onLabelChange, onLabel
   );
 }
 
-export default function AcademicCalendarUpload() {
+export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }) {
   const [academicYear, setAcademicYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState<1 | 2>(now.getMonth() < 7 ? 1 : 2);
   const [exceptions, setExceptions] = useState<CalendarException[]>([]);
@@ -198,16 +201,22 @@ export default function AcademicCalendarUpload() {
         <div>
           <p className="eyebrow">ACADEMIC CALENDAR</p>
           <h2>학사일정</h2>
-          <p className="muted">학사일정 PDF를 업로드하면 휴교일(방학·재량휴교·공휴일)을 자동으로 찾아 아래 캘린더에 반영합니다. 자동 인식은 완벽하지 않을 수 있으니 저장 전 꼭 확인해 주세요. 평일 칸을 클릭하면 등교일 ↔ 휴교일이 전환되고, 휴교일 칸의 사유는 직접 입력해 고칠 수 있습니다.</p>
+          <p className="muted">
+            {canEdit
+              ? "학사일정 PDF를 업로드하면 휴교일(방학·재량휴교·공휴일)을 자동으로 찾아 아래 캘린더에 반영합니다. 자동 인식은 완벽하지 않을 수 있으니 저장 전 꼭 확인해 주세요. 평일 칸을 클릭하면 등교일 ↔ 휴교일이 전환되고, 휴교일 칸의 사유는 직접 입력해 고칠 수 있습니다."
+              : "학교의 학사일정을 확인할 수 있습니다. 수정은 관리자만 할 수 있습니다."}
+          </p>
         </div>
       </div>
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={academicYear} onChange={(e) => setAcademicYear(Number(e.target.value))} /></label>
         <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value) as 1 | 2)}><option value={1}>1학기</option><option value={2}>2학기</option></select></label>
-        <label>PDF 업로드
-          <input type="file" accept="application/pdf" disabled={parsing} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadPdf(file); e.target.value = ""; }} />
-        </label>
+        {canEdit && (
+          <label>PDF 업로드
+            <input type="file" accept="application/pdf" disabled={parsing} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadPdf(file); e.target.value = ""; }} />
+          </label>
+        )}
         {parsing && <span className="muted">분석 중...</span>}
         {loading && <span className="muted">불러오는 중...</span>}
       </div>
@@ -215,21 +224,23 @@ export default function AcademicCalendarUpload() {
       {feedback && <p className={feedback.type === "success" ? "success-message" : "form-error"}>{feedback.text}</p>}
 
       <div className="two-columns">
-        <label>{semester}학기 시작일<input type="date" value={terms[semester].startDate} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], startDate: e.target.value } }))} /></label>
-        <label>{semester}학기 종료일<input type="date" value={terms[semester].endDate} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], endDate: e.target.value } }))} /></label>
+        <label>{semester}학기 시작일<input type="date" value={terms[semester].startDate} disabled={!canEdit} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], startDate: e.target.value } }))} /></label>
+        <label>{semester}학기 종료일<input type="date" value={terms[semester].endDate} disabled={!canEdit} onChange={(e) => setTerms((current) => ({ ...current, [semester]: { ...current[semester], endDate: e.target.value } }))} /></label>
       </div>
       <p className="muted">{semester}학기 휴교일 {semesterExceptionCount}건</p>
 
       <div className="calendar-months">
         {visibleMonths.map(({ year, month }) => (
-          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionMap={exceptionMap} onToggle={toggleDay} onLabelChange={updateLabel} onLabelBlur={blurLabel} />
+          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionMap={exceptionMap} canEdit={canEdit} onToggle={toggleDay} onLabelChange={updateLabel} onLabelBlur={blurLabel} />
         ))}
         {!visibleMonths.length && <p className="muted">학기 시작일과 종료일을 확인해 주세요.</p>}
       </div>
 
-      <div className="warning-actions">
-        <button className="primary" onClick={save} disabled={saving}>{saving ? "저장 중..." : `${academicYear}학년도 학사일정 저장`}</button>
-      </div>
+      {canEdit && (
+        <div className="warning-actions">
+          <button className="primary" onClick={save} disabled={saving}>{saving ? "저장 중..." : `${academicYear}학년도 학사일정 저장`}</button>
+        </div>
+      )}
     </section>
   );
 }

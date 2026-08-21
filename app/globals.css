@@ -1188,6 +1188,9 @@ h3 {
   outline: 1px solid var(--danger);
   border-radius: 4px;
 }
+.calendar-day-label-static {
+  display: block;
+}
 .warning-grid {
   border-collapse: separate;
   border-spacing: 0;
