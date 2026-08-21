@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type CalendarException = { date: string; label: string; isClosure: boolean };
 type Feedback = { type: "success" | "error"; text: string };
 type TermDates = { startDate: string; endDate: string };
-type DayEditorState = { date: string; label: string; isClosure: boolean };
+/** originalStart/originalEnd is the pre-edit range being replaced (null for a brand-new entry) --
+ * saving clears that whole original range first so shrinking or moving a multi-day range doesn't
+ * leave stale days behind, then (re)writes startDate..endDate. */
+type DayEditorState = { originalStart: string | null; originalEnd: string | null; startDate: string; endDate: string; label: string; isClosure: boolean };
 
 const now = new Date();
 const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -13,18 +16,26 @@ const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 // DB's semester number (not renamed) so it still round-trips through the shared academic_terms
 // API, which other parts of the app (attendance stats) still key by semester 1/2.
 const AUTUMN_SEMESTER = 2 as const;
+const MAX_RANGE_DAYS = 366;
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function defaultAutumnTerm(academicYear: number): TermDates {
-  return { startDate: `${academicYear}-08-01`, endDate: `${academicYear + 1}-02-28` };
+function addDaysISO(dateISO: string, delta: number): string {
+  const d = new Date(`${dateISO}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
 }
 
-function formatDayHeading(dateISO: string): string {
-  const d = new Date(`${dateISO}T00:00:00Z`);
-  return `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${DOW_LABELS[d.getUTCDay()]})`;
+function daysBetween(startISO: string, endISO: string): number {
+  const start = new Date(`${startISO}T00:00:00Z`);
+  const end = new Date(`${endISO}T00:00:00Z`);
+  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function defaultAutumnTerm(academicYear: number): TermDates {
+  return { startDate: `${academicYear}-08-01`, endDate: `${academicYear + 1}-02-28` };
 }
 
 /** Every (year, month) from startISO's month through endISO's month, inclusive. */
@@ -46,7 +57,7 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
 function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
   year: number;
   month: number;
-  exceptionMap: Map<string, { label: string; isClosure: boolean }>;
+  exceptionMap: Map<string, { label: string; isClosure: boolean; showLabel: boolean }>;
   canEdit: boolean;
   onDayClick: (date: string) => void;
 }) {
@@ -76,7 +87,7 @@ function MonthGrid({ year, month, exceptionMap, canEdit, onDayClick }: {
               onKeyDown={(e) => { if (canEdit && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDayClick(dateISO); } }}
             >
               <span className="calendar-day-num">{day}</span>
-              {entry && <span className="calendar-day-label">{entry.label}</span>}
+              {entry?.showLabel && <span className="calendar-day-label">{entry.label}</span>}
             </div>
           );
         })}
@@ -144,27 +155,78 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
     }
   }
 
-  const exceptionMap = useMemo(() => new Map(exceptions.map((e) => [e.date, { label: e.label, isClosure: e.isClosure }])), [exceptions]);
+  const byDate = useMemo(() => new Map(exceptions.map((e) => [e.date, e])), [exceptions]);
+
+  // A day's label is only shown when it starts a run (its predecessor isn't the same label/type),
+  // so a multi-day range reads as one line instead of repeating on every date -- the colored
+  // background still marks every day the range covers.
+  const exceptionMap = useMemo(() => {
+    const map = new Map<string, { label: string; isClosure: boolean; showLabel: boolean }>();
+    for (const e of exceptions) {
+      const prev = byDate.get(addDaysISO(e.date, -1));
+      const isContinuation = !!prev && prev.label === e.label && prev.isClosure === e.isClosure;
+      map.set(e.date, { label: e.label, isClosure: e.isClosure, showLabel: !isContinuation });
+    }
+    return map;
+  }, [exceptions, byDate]);
+
+  function findRunBounds(dateISO: string, label: string, isClosure: boolean): { start: string; end: string } {
+    let start = dateISO;
+    for (;;) {
+      const prevDate = addDaysISO(start, -1);
+      const prev = byDate.get(prevDate);
+      if (prev && prev.label === label && prev.isClosure === isClosure) start = prevDate;
+      else break;
+    }
+    let end = dateISO;
+    for (;;) {
+      const nextDate = addDaysISO(end, 1);
+      const next = byDate.get(nextDate);
+      if (next && next.label === label && next.isClosure === isClosure) end = nextDate;
+      else break;
+    }
+    return { start, end };
+  }
 
   function openDayEditor(dateISO: string) {
-    const existing = exceptionMap.get(dateISO);
-    setDayEditor({ date: dateISO, label: existing?.label || "", isClosure: existing?.isClosure ?? false });
+    const existing = byDate.get(dateISO);
+    if (existing) {
+      const { start, end } = findRunBounds(dateISO, existing.label, existing.isClosure);
+      setDayEditor({ originalStart: start, originalEnd: end, startDate: start, endDate: end, label: existing.label, isClosure: existing.isClosure });
+    } else {
+      setDayEditor({ originalStart: null, originalEnd: null, startDate: dateISO, endDate: dateISO, label: "", isClosure: false });
+    }
   }
 
   function saveDayEditor() {
     if (!dayEditor) return;
-    const trimmed = dayEditor.label.trim();
+    const { startDate, endDate, label, isClosure, originalStart, originalEnd } = dayEditor;
+    if (startDate > endDate) {
+      setFeedback({ type: "error", text: "시작일이 종료일보다 늦을 수 없습니다." });
+      return;
+    }
+    const dayCount = daysBetween(startDate, endDate);
+    if (dayCount > MAX_RANGE_DAYS) {
+      setFeedback({ type: "error", text: "날짜 범위가 너무 깁니다. 1년 이내로 설정해 주세요." });
+      return;
+    }
+    const trimmed = label.trim();
     setExceptions((current) => {
-      const rest = current.filter((e) => e.date !== dayEditor.date);
-      if (!trimmed && !dayEditor.isClosure) return rest;
-      return [...rest, { date: dayEditor.date, label: trimmed || "휴교", isClosure: dayEditor.isClosure }].sort((a, b) => a.date.localeCompare(b.date));
+      let rest = current;
+      if (originalStart && originalEnd) rest = rest.filter((e) => !(e.date >= originalStart && e.date <= originalEnd));
+      rest = rest.filter((e) => !(e.date >= startDate && e.date <= endDate));
+      if (!trimmed && !isClosure) return rest;
+      const newRows: CalendarException[] = [];
+      for (let d = startDate, i = 0; i < dayCount; i++, d = addDaysISO(d, 1)) newRows.push({ date: d, label: trimmed || "휴교", isClosure });
+      return [...rest, ...newRows].sort((a, b) => a.date.localeCompare(b.date));
     });
     setDayEditor(null);
   }
 
   function deleteDayEditorEntry() {
-    if (!dayEditor) return;
-    setExceptions((current) => current.filter((e) => e.date !== dayEditor.date));
+    if (!dayEditor?.originalStart || !dayEditor.originalEnd) return;
+    const { originalStart, originalEnd } = dayEditor;
+    setExceptions((current) => current.filter((e) => !(e.date >= originalStart && e.date <= originalEnd)));
     setDayEditor(null);
   }
 
@@ -199,7 +261,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
           <h2>학사일정</h2>
           <p className="muted">
             {canEdit
-              ? "날짜를 클릭하면 그날의 이벤트와 휴교 여부를 등록·수정할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. PDF를 업로드하면 휴교일을 자동으로 찾아 반영하니, 저장 전 꼭 확인해 주세요."
+              ? "날짜를 클릭하면 그날의 이벤트와 휴교 여부를 등록·수정할 수 있고, 시작일·종료일을 지정해 여러 날에 걸친 일정을 한 번에 등록할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. PDF를 업로드하면 휴교일을 자동으로 찾아 반영하니, 저장 전 꼭 확인해 주세요."
               : "학교의 학사일정을 확인할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. 수정은 관리자만 할 수 있습니다."}
           </p>
         </div>
@@ -242,8 +304,12 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDayEditor(null); }}>
           <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="day-editor-title">
             <button type="button" className="modal-close" aria-label="닫기" onClick={() => setDayEditor(null)}>×</button>
-            <p className="eyebrow">CALENDAR DAY</p>
-            <h2 id="day-editor-title">{formatDayHeading(dayEditor.date)}</h2>
+            <p className="eyebrow">CALENDAR EVENT</p>
+            <h2 id="day-editor-title">{dayEditor.originalStart ? "일정 수정" : "일정 등록"}</h2>
+            <div className="two-columns">
+              <label>시작일<input type="date" value={dayEditor.startDate} onChange={(e) => setDayEditor((current) => (current ? { ...current, startDate: e.target.value } : current))} /></label>
+              <label>종료일<input type="date" value={dayEditor.endDate} onChange={(e) => setDayEditor((current) => (current ? { ...current, endDate: e.target.value } : current))} /></label>
+            </div>
             <label className="day-editor-field">
               이벤트 / 사유
               <input
@@ -262,7 +328,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
               휴교일 (등교하지 않음)
             </label>
             <div className="modal-actions">
-              {exceptionMap.has(dayEditor.date) && <button type="button" className="danger-outline-button" onClick={deleteDayEditorEntry}>삭제</button>}
+              {dayEditor.originalStart && <button type="button" className="danger-outline-button" onClick={deleteDayEditorEntry}>삭제</button>}
               <button type="button" className="secondary" onClick={() => setDayEditor(null)}>취소</button>
               <button type="button" className="primary" onClick={saveDayEditor}>저장</button>
             </div>
