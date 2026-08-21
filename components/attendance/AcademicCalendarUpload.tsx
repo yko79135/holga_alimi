@@ -111,9 +111,15 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
     <div className="calendar-month">
       <h4>{year}년 {month}월</h4>
       <div className="calendar-grid">
-        {DOW_LABELS.map((d, i) => <div key={d} className={`calendar-dow ${i === 0 || i === 6 ? "weekend" : ""}`}>{d}</div>)}
+        {DOW_LABELS.map((d, i) => <div key={d} className={`calendar-dow ${i === 0 || i === 6 ? "weekend" : ""}`} style={{ gridColumn: i + 1, gridRow: 1 }}>{d}</div>)}
         {cells.map((day, i) => {
-          if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" />;
+          // Every cell gets an explicit grid position, matching the bars below -- CSS Grid places
+          // all explicitly-positioned items first and only then auto-places the rest into whatever
+          // cells are left, so leaving these to auto-placement would scatter them away from their
+          // correct day whenever a bar claims most of a row (e.g. a week fully inside a closure).
+          const weekIndex = Math.floor(i / 7) + 2;
+          const col = (i % 7) + 1;
+          if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" style={{ gridColumn: col, gridRow: weekIndex }} />;
           const dateISO = `${year}-${pad(month)}-${pad(day)}`;
           const isWeekend = i % 7 === 0 || i % 7 === 6;
           const entry = exceptionInfo.get(dateISO);
@@ -122,6 +128,7 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
             <div
               key={dateISO}
               className={`calendar-day ${isWeekend ? "weekend" : ""} ${stateClass}`}
+              style={{ gridColumn: col, gridRow: weekIndex }}
               role={canEdit ? "button" : undefined}
               tabIndex={canEdit ? 0 : undefined}
               onClick={() => canEdit && onDayClick(dateISO)}
