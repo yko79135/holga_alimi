@@ -85,9 +85,16 @@ function eventDates(academicYear: number, monthIdx: number, day1: number, day2: 
   return dates;
 }
 
-export type CalendarException = { date: string; label: string };
+export type CalendarException = { date: string; label: string; isClosure: boolean };
 export type CalendarTerm = { semester: 1 | 2; startDate: string; endDate: string };
 export type ParsedCalendar = { academicYear: number; exceptions: CalendarException[]; terms: CalendarTerm[] };
+
+/** The source PDF tags some closure lines with a literal "(휴교)" suffix -- redundant now that
+ * closure is shown via the calendar's red/blue coloring instead of text, so it's stripped here. */
+function cleanLabel(label: string): string {
+  const stripped = label.replace(/\s*\(\s*휴교\s*\)/g, "").trim();
+  return stripped || "휴교";
+}
 
 export function parseAcademicCalendarText(text: string): ParsedCalendar {
   const { academicYear, events } = parseEvents(text);
@@ -95,11 +102,14 @@ export function parseAcademicCalendarText(text: string): ParsedCalendar {
   const exceptionMap = new Map<string, string>();
   for (const e of events) {
     if (!isClosureLabel(e.label)) continue;
+    const label = cleanLabel(e.label);
     for (const date of eventDates(academicYear, e.monthIdx, e.day1, e.day2)) {
-      if (!exceptionMap.has(date)) exceptionMap.set(date, e.label);
+      if (!exceptionMap.has(date)) exceptionMap.set(date, label);
     }
   }
-  const exceptions = Array.from(exceptionMap.entries()).map(([date, label]) => ({ date, label })).sort((a, b) => a.date.localeCompare(b.date));
+  // PDF-parsed entries are always closures; non-closure "events" are added manually by an admin
+  // through the calendar's day editor, not extracted from the uploaded PDF.
+  const exceptions = Array.from(exceptionMap.entries()).map(([date, label]) => ({ date, label, isClosure: true })).sort((a, b) => a.date.localeCompare(b.date));
 
   // Semester boundaries: 개학식 (opening ceremony) marks a start, 방학식 (closing ceremony) marks
   // an end. This template shows one 개학식 (semester 2's, since semester 1 continues from before
