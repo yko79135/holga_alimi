@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminJsonError, requireAdmin } from "@/lib/admin/require-admin";
+import { requireStaff, staffJsonError } from "@/lib/admin/require-staff";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -10,21 +11,22 @@ function isDateOnly(value: unknown) {
 }
 
 /** Current saved calendar state for one academic year, so the upload UI can show what's already
- * on file (e.g. after a page refresh) instead of always looking empty. */
+ * on file (e.g. after a page refresh) instead of always looking empty. Teachers can view this
+ * (read-only in the UI) so they can check the school calendar; only admins can save changes. */
 export async function GET(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireStaff();
   if ("error" in auth) return auth.error;
 
   const academicYear = Number(new URL(req.url).searchParams.get("year") || new Date().getFullYear());
-  if (!academicYear) return adminJsonError("학년도를 확인해 주세요.", 400);
+  if (!academicYear) return staffJsonError("학년도를 확인해 주세요.", 400);
 
   const admin = createAdminClient();
   const [exceptionsRes, termsRes] = await Promise.all([
     admin.from("academic_calendar_exceptions").select("date,label").eq("academic_year", academicYear).order("date"),
     admin.from("academic_terms").select("semester,start_date,end_date,total_instructional_days").eq("academic_year", academicYear).in("semester", [1, 2]),
   ]);
-  if (exceptionsRes.error) return adminJsonError("학사일정을 불러오지 못했습니다.", 500);
-  if (termsRes.error) return adminJsonError("학기 정보를 불러오지 못했습니다.", 500);
+  if (exceptionsRes.error) return staffJsonError("학사일정을 불러오지 못했습니다.", 500);
+  if (termsRes.error) return staffJsonError("학기 정보를 불러오지 못했습니다.", 500);
 
   return NextResponse.json({
     academicYear,
