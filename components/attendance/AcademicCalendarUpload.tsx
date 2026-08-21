@@ -54,22 +54,22 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
   return months;
 }
 
-type DayInfo = { label: string; isClosure: boolean; isRunStart: boolean; isRunEnd: boolean };
-type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean; roundLeft: boolean; roundRight: boolean; showLabel: boolean };
+type DayInfo = { label: string; isClosure: boolean };
+type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean };
 
 /** Turns a month's day cells into one bar per (week row, same-label/closure run) instead of one
  * mark per date, so a multi-day range renders as a single rectangle spanning its columns -- a
  * CSS grid item spanning multiple column tracks automatically bridges the gap between them, which
- * is what makes the bar look continuous. Bars never span across week rows (or months); a run's
- * true start/end (from exceptionInfo, computed globally so it's correct at month boundaries too)
- * gets a rounded cap and the label, a wrapped continuation gets a flat edge and no repeated text. */
+ * is what makes the bar look continuous. Bars never span across week rows (or months) -- each
+ * row's segment is fully rounded and carries its own label, matching how Google Calendar closes
+ * off every week's portion of a multi-week event instead of leaving it visually cut open. */
 function computeBarSegments(cells: (number | null)[], year: number, month: number, exceptionInfo: Map<string, DayInfo>): BarSegment[] {
   const segments: BarSegment[] = [];
-  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; roundLeft: boolean; lastCol: number; lastRunEnd: boolean } | null = null;
+  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; lastCol: number } | null = null;
 
   const closeOpen = () => {
     if (!open) return;
-    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure, roundLeft: open.roundLeft, roundRight: open.lastRunEnd, showLabel: open.roundLeft });
+    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure });
     open = null;
   };
 
@@ -84,10 +84,9 @@ function computeBarSegments(cells: (number | null)[], year: number, month: numbe
 
     if (open && open.label === info.label && open.isClosure === info.isClosure) {
       open.lastCol = col;
-      open.lastRunEnd = info.isRunEnd;
     } else {
       closeOpen();
-      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, roundLeft: info.isRunStart, lastCol: col, lastRunEnd: info.isRunEnd };
+      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, lastCol: col };
     }
   }
   closeOpen();
@@ -141,10 +140,10 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
         {barSegments.map((seg) => (
           <div
             key={`${seg.weekIndex}-${seg.startCol}`}
-            className={`calendar-event-bar ${seg.isClosure ? "exception" : "event"} ${seg.roundLeft ? "round-left" : ""} ${seg.roundRight ? "round-right" : ""}`}
+            className={`calendar-event-bar ${seg.isClosure ? "exception" : "event"}`}
             style={{ gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`, gridRow: seg.weekIndex + 2 }}
           >
-            {seg.showLabel && seg.label}
+            {seg.label}
           </div>
         ))}
       </div>
@@ -212,21 +211,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
   }
 
   const byDate = useMemo(() => new Map(exceptions.map((e) => [e.date, e])), [exceptions]);
-
-  // isRunStart/isRunEnd mark whether a date's predecessor/successor continues the same
-  // label+closure run, computed globally (not per visible month) so a range spanning a month
-  // boundary still gets correct flat/rounded bar caps in each month's own grid.
-  const exceptionInfo = useMemo(() => {
-    const map = new Map<string, DayInfo>();
-    for (const e of exceptions) {
-      const prev = byDate.get(addDaysISO(e.date, -1));
-      const next = byDate.get(addDaysISO(e.date, 1));
-      const isRunStart = !(prev && prev.label === e.label && prev.isClosure === e.isClosure);
-      const isRunEnd = !(next && next.label === e.label && next.isClosure === e.isClosure);
-      map.set(e.date, { label: e.label, isClosure: e.isClosure, isRunStart, isRunEnd });
-    }
-    return map;
-  }, [exceptions, byDate]);
+  const exceptionInfo = useMemo(() => new Map(exceptions.map((e) => [e.date, { label: e.label, isClosure: e.isClosure }])), [exceptions]);
 
   function findRunBounds(dateISO: string, label: string, isClosure: boolean): { start: string; end: string } {
     let start = dateISO;
