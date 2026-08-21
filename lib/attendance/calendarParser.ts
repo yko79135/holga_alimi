@@ -99,17 +99,23 @@ function cleanLabel(label: string): string {
 export function parseAcademicCalendarText(text: string): ParsedCalendar {
   const { academicYear, events } = parseEvents(text);
 
-  const exceptionMap = new Map<string, string>();
+  // A date can carry more than one closure reason (e.g. a named holiday landing inside a longer
+  // 방학 block), so each date maps to a *set* of distinct labels rather than just the first one seen.
+  const exceptionMap = new Map<string, Set<string>>();
   for (const e of events) {
     if (!isClosureLabel(e.label)) continue;
     const label = cleanLabel(e.label);
     for (const date of eventDates(academicYear, e.monthIdx, e.day1, e.day2)) {
-      if (!exceptionMap.has(date)) exceptionMap.set(date, label);
+      const labels = exceptionMap.get(date);
+      if (labels) labels.add(label);
+      else exceptionMap.set(date, new Set([label]));
     }
   }
   // PDF-parsed entries are always closures; non-closure "events" are added manually by an admin
   // through the calendar's day editor, not extracted from the uploaded PDF.
-  const exceptions = Array.from(exceptionMap.entries()).map(([date, label]) => ({ date, label, isClosure: true })).sort((a, b) => a.date.localeCompare(b.date));
+  const exceptions = Array.from(exceptionMap.entries())
+    .flatMap(([date, labels]) => Array.from(labels).map((label) => ({ date, label, isClosure: true })))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   // Semester boundaries: 개학식 (opening ceremony) marks a start, 방학식 (closing ceremony) marks
   // an end. This template shows one 개학식 (semester 2's, since semester 1 continues from before

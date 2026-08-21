@@ -5,10 +5,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type CalendarException = { date: string; label: string; isClosure: boolean };
 type Feedback = { type: "success" | "error"; text: string };
 type TermDates = { startDate: string; endDate: string };
-/** originalStart/originalEnd is the pre-edit range being replaced (null for a brand-new entry) --
- * saving clears that whole original range first so shrinking or moving a multi-day range doesn't
- * leave stale days behind, then (re)writes startDate..endDate. */
-type DayEditorState = { originalStart: string | null; originalEnd: string | null; startDate: string; endDate: string; label: string; isClosure: boolean };
+/** originalStart/originalEnd/originalLabel/originalIsClosure identify the pre-edit run being
+ * replaced (all null for a brand-new entry) -- saving clears that exact run first (matched by date
+ * range AND label/isClosure, since a date can now carry more than one concurrent event) so shrinking
+ * or moving a multi-day range doesn't leave stale days behind and doesn't touch any OTHER event that
+ * happens to share some of the same dates, then (re)writes startDate..endDate. */
+type DayEditorState = {
+  originalStart: string | null;
+  originalEnd: string | null;
+  originalLabel: string | null;
+  originalIsClosure: boolean | null;
+  startDate: string;
+  endDate: string;
+  label: string;
+  isClosure: boolean;
+};
 
 const now = new Date();
 const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -61,51 +72,85 @@ function monthsInRange(startISO: string, endISO: string): { year: number; month:
   return months;
 }
 
-type DayInfo = { label: string; isClosure: boolean; showLabel: boolean };
-type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean; showLabel: boolean };
+/** A date can now carry more than one concurrent event/closure (e.g. 중간고사 26-30 overlapping
+ * 종교개혁 기념일 on the 30th), so exceptionInfo maps each date to a *list*. runId identifies which
+ * contiguous run (same label+isClosure, adjacent dates) a given day belongs to, independent of any
+ * OTHER run that happens to share some of the same dates. */
+type DayInfo = { label: string; isClosure: boolean; showLabel: boolean; runId: string };
+type BarSegment = { weekIndex: number; startCol: number; endCol: number; label: string; isClosure: boolean; showLabel: boolean; lane: number };
 
-/** Turns a month's day cells into one bar per (week row, same-label/closure run) instead of one
- * mark per date, so a multi-day range renders as a single rectangle spanning its columns -- a
- * CSS grid item spanning multiple column tracks automatically bridges the gap between them, which
- * is what makes the bar look continuous. Bars never span across week rows (or months) -- each
- * row's segment is fully rounded, matching how Google Calendar closes off every week's portion of
- * a multi-week event instead of leaving it visually cut open, but only the segment containing the
- * run's first visible day (per exceptionInfo.showLabel) carries the text, not every row. */
-function computeBarSegments(cells: (number | null)[], year: number, month: number, exceptionInfo: Map<string, DayInfo>): BarSegment[] {
-  const segments: BarSegment[] = [];
-  let open: { weekIndex: number; startCol: number; label: string; isClosure: boolean; lastCol: number; showLabel: boolean } | null = null;
+/** Turns a month's day cells into one bar per (week row, run) instead of one mark per date, so a
+ * multi-day range renders as a single rectangle spanning its columns -- a CSS grid item spanning
+ * multiple column tracks automatically bridges the gap between them, which is what makes the bar
+ * look continuous. Bars never span across week rows (or months) -- each row's segment is fully
+ * rounded, matching how Google Calendar closes off every week's portion of a multi-week event
+ * instead of leaving it visually cut open, but only the segment containing the run's first visible
+ * day (per exceptionInfo's showLabel) carries the text, not every row.
+ *
+ * Multiple runs can be "open" at once now (concurrent events on overlapping dates), tracked by
+ * runId rather than by label/isClosure equality alone -- two unrelated events could otherwise
+ * coincidentally share a label. Once a row's segments are known, they're packed into the fewest
+ * "lanes" (stacked sub-rows) needed so no two overlapping segments share a lane, the same greedy
+ * interval-scheduling approach calendar UIs generally use for concurrent-event layout. */
+function computeBarSegments(cells: (number | null)[], year: number, month: number, exceptionInfo: Map<string, DayInfo[]>): BarSegment[] {
+  type OpenRun = { weekIndex: number; startCol: number; lastCol: number; label: string; isClosure: boolean; showLabel: boolean; runId: string };
+  const rawSegments: Omit<BarSegment, "lane">[] = [];
+  let opens: OpenRun[] = [];
 
-  const closeOpen = () => {
-    if (!open) return;
-    segments.push({ weekIndex: open.weekIndex, startCol: open.startCol, endCol: open.lastCol, label: open.label, isClosure: open.isClosure, showLabel: open.showLabel });
-    open = null;
+  const closeAll = () => {
+    for (const run of opens) rawSegments.push({ weekIndex: run.weekIndex, startCol: run.startCol, endCol: run.lastCol, label: run.label, isClosure: run.isClosure, showLabel: run.showLabel });
+    opens = [];
   };
 
   for (let i = 0; i < cells.length; i++) {
     const weekIndex = Math.floor(i / 7);
     const col = i % 7;
-    if (col === 0) closeOpen(); // bars never span across week rows
+    if (col === 0) closeAll(); // bars never span across week rows
 
     const day = cells[i];
-    const info = day === null ? undefined : exceptionInfo.get(`${year}-${pad(month)}-${pad(day)}`);
-    if (!info) { closeOpen(); continue; }
+    const infos = day === null ? [] : exceptionInfo.get(`${year}-${pad(month)}-${pad(day)}`) || [];
+    const remaining = [...infos];
+    const stillOpen: OpenRun[] = [];
+    for (const run of opens) {
+      const idx = remaining.findIndex((info) => info.runId === run.runId);
+      if (idx !== -1) {
+        run.lastCol = col;
+        run.showLabel = run.showLabel || remaining[idx].showLabel;
+        stillOpen.push(run);
+        remaining.splice(idx, 1);
+      } else {
+        rawSegments.push({ weekIndex: run.weekIndex, startCol: run.startCol, endCol: run.lastCol, label: run.label, isClosure: run.isClosure, showLabel: run.showLabel });
+      }
+    }
+    opens = stillOpen;
+    for (const info of remaining) opens.push({ weekIndex, startCol: col, lastCol: col, label: info.label, isClosure: info.isClosure, showLabel: info.showLabel, runId: info.runId });
+  }
+  closeAll();
 
-    if (open && open.label === info.label && open.isClosure === info.isClosure) {
-      open.lastCol = col;
-      open.showLabel = open.showLabel || info.showLabel;
-    } else {
-      closeOpen();
-      open = { weekIndex, startCol: col, label: info.label, isClosure: info.isClosure, lastCol: col, showLabel: info.showLabel };
+  const byWeek = new Map<number, Omit<BarSegment, "lane">[]>();
+  for (const seg of rawSegments) {
+    const list = byWeek.get(seg.weekIndex);
+    if (list) list.push(seg);
+    else byWeek.set(seg.weekIndex, [seg]);
+  }
+  const result: BarSegment[] = [];
+  for (const segs of byWeek.values()) {
+    const sorted = [...segs].sort((a, b) => a.startCol - b.startCol);
+    const laneEndCols: number[] = [];
+    for (const seg of sorted) {
+      let lane = laneEndCols.findIndex((end) => end < seg.startCol);
+      if (lane === -1) { lane = laneEndCols.length; laneEndCols.push(seg.endCol); }
+      else laneEndCols[lane] = seg.endCol;
+      result.push({ ...seg, lane });
     }
   }
-  closeOpen();
-  return segments;
+  return result;
 }
 
 function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
   year: number;
   month: number;
-  exceptionInfo: Map<string, DayInfo>;
+  exceptionInfo: Map<string, DayInfo[]>;
   canEdit: boolean;
   onDayClick: (date: string) => void;
 }) {
@@ -113,34 +158,53 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
   const startWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const cells: (number | null)[] = [...Array(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
+  const weeksCount = cells.length / 7;
   const barSegments = useMemo(() => computeBarSegments(cells, year, month, exceptionInfo), [cells, year, month, exceptionInfo]);
+  // Reserved uniformly across every week in the month (simpler than recomputing per row) -- a week
+  // with fewer concurrent events just gets a little unused space below its bars.
+  const lanesForMonth = useMemo(() => Math.max(1, ...barSegments.map((s) => s.lane + 1)), [barSegments]);
+  // Explicit per-track sizes instead of letting spanning day cells share implicit "auto" rows --
+  // when several grid items all span the same set of auto rows with nothing sized to an individual
+  // row alone, browsers can concentrate all the height into just one of those rows instead of
+  // distributing it, collapsing the others to ~0 and hiding/overlapping whatever sits in them.
+  const gridTemplateRows = useMemo(
+    () => ["auto", ...Array.from({ length: weeksCount }, () => ["34px", ...Array.from({ length: lanesForMonth }, () => "19px")]).flat()].join(" "),
+    [weeksCount, lanesForMonth],
+  );
 
   return (
     <div className="calendar-month">
       <h4>{year}년 {month}월</h4>
-      <div className="calendar-grid">
+      <div className="calendar-grid" style={{ gridTemplateRows }}>
         {DOW_LABELS.map((d, i) => <div key={d} className={`calendar-dow ${i === 0 || i === 6 ? "weekend" : ""}`} style={{ gridColumn: i + 1, gridRow: 1 }}>{d}</div>)}
         {cells.map((day, i) => {
           // Every cell gets an explicit grid position, matching the bars below -- CSS Grid places
           // all explicitly-positioned items first and only then auto-places the rest into whatever
           // cells are left, so leaving these to auto-placement would scatter them away from their
           // correct day whenever a bar claims most of a row (e.g. a week fully inside a closure).
-          const weekIndex = Math.floor(i / 7) + 2;
+          const weekIndex = Math.floor(i / 7);
+          const rowStart = 2 + weekIndex * (1 + lanesForMonth);
           const col = (i % 7) + 1;
-          if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" style={{ gridColumn: col, gridRow: weekIndex }} />;
+          if (day === null) return <div key={`empty-${i}`} className="calendar-day empty" style={{ gridColumn: col, gridRow: `${rowStart} / ${rowStart + 1 + lanesForMonth}` }} />;
           const dateISO = `${year}-${pad(month)}-${pad(day)}`;
           const isWeekend = i % 7 === 0 || i % 7 === 6;
-          const entry = exceptionInfo.get(dateISO);
-          const stateClass = entry ? (entry.isClosure ? "exception" : "event") : "";
+          const entries = exceptionInfo.get(dateISO) || [];
+          const hasClosure = entries.some((e) => e.isClosure);
+          const hasEvent = entries.some((e) => !e.isClosure);
+          const stateClass = hasClosure ? "exception" : hasEvent ? "event" : "";
+          // Clickable for admins on any day (to add/edit), and for everyone else once the day
+          // actually has something on it -- tapping shows the full, untruncated event list, which
+          // matters most on mobile where a long event name gets cut off inside the bar.
+          const clickable = canEdit || entries.length > 0;
           return (
             <div
               key={dateISO}
               className={`calendar-day ${isWeekend ? "weekend" : ""} ${stateClass}`}
-              style={{ gridColumn: col, gridRow: weekIndex }}
-              role={canEdit ? "button" : undefined}
-              tabIndex={canEdit ? 0 : undefined}
-              onClick={() => canEdit && onDayClick(dateISO)}
-              onKeyDown={(e) => { if (canEdit && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDayClick(dateISO); } }}
+              style={{ gridColumn: col, gridRow: `${rowStart} / ${rowStart + 1 + lanesForMonth}` }}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={() => clickable && onDayClick(dateISO)}
+              onKeyDown={(e) => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDayClick(dateISO); } }}
             >
               <span className="calendar-day-num">{day}</span>
             </div>
@@ -148,9 +212,9 @@ function MonthGrid({ year, month, exceptionInfo, canEdit, onDayClick }: {
         })}
         {barSegments.map((seg) => (
           <div
-            key={`${seg.weekIndex}-${seg.startCol}`}
+            key={`${seg.weekIndex}-${seg.startCol}-${seg.lane}`}
             className={`calendar-event-bar ${seg.isClosure ? "exception" : "event"}`}
-            style={{ gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`, gridRow: seg.weekIndex + 2 }}
+            style={{ gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`, gridRow: 2 + seg.weekIndex * (1 + lanesForMonth) + 1 + seg.lane }}
           >
             {seg.showLabel && seg.label}
           </div>
@@ -168,6 +232,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [dayPopup, setDayPopup] = useState<string | null>(null);
   const [dayEditor, setDayEditor] = useState<DayEditorState | null>(null);
 
   const loadSaved = useCallback(async (year: number) => {
@@ -219,77 +284,93 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
     }
   }
 
-  const byDate = useMemo(() => new Map(exceptions.map((e) => [e.date, e])), [exceptions]);
+  const byDate = useMemo(() => {
+    const map = new Map<string, CalendarException[]>();
+    for (const e of exceptions) {
+      const list = map.get(e.date);
+      if (list) list.push(e);
+      else map.set(e.date, [e]);
+    }
+    return map;
+  }, [exceptions]);
 
-  // Each date belongs to a "run" of consecutive same-label/closure days, identified by that run's
-  // true start date (which may fall before the visible calendar, e.g. a break that started last
-  // month). showLabel marks only the run's *first visible* day -- the earliest day of that run
-  // that's actually on-screen -- so the label appears once per run instead of once per week row,
-  // while still showing up even when the run's true start is scrolled off before the first
-  // rendered month (the visibility floor is that month's 1st, not the exact term start date --
-  // e.g. semester 2 officially starting 8/26 shouldn't hide 여름방학 days earlier in August, since
-  // the whole month still renders).
+  // Each date can carry more than one concurrent run now, so runs are found by grouping same
+  // label+isClosure exceptions together first (a date can belong to at most one run per group),
+  // then splitting each group into contiguous date chains. showLabel marks only a run's *first
+  // visible* day -- the earliest day of that run that's actually on-screen -- so the label appears
+  // once per run instead of once per week row, while still showing up even when the run's true
+  // start is scrolled off before the first rendered month (the visibility floor is that month's
+  // 1st, not the exact term start date -- e.g. semester 2 officially starting 8/26 shouldn't hide
+  // 여름방학 days earlier in August, since the whole month still renders).
   const visibleFloor = startOfMonth(term.startDate);
   const exceptionInfo = useMemo(() => {
-    const sorted = [...exceptions].sort((a, b) => a.date.localeCompare(b.date));
-    const runIdByDate = new Map<string, string>();
-    let runId = "";
-    let prevDate: string | null = null;
-    let prevLabel = "";
-    let prevIsClosure = false;
-    for (const e of sorted) {
-      const isContinuation = prevDate !== null && addDaysISO(prevDate, 1) === e.date && prevLabel === e.label && prevIsClosure === e.isClosure;
-      if (!isContinuation) runId = e.date;
-      runIdByDate.set(e.date, runId);
-      prevDate = e.date;
-      prevLabel = e.label;
-      prevIsClosure = e.isClosure;
+    const groups = new Map<string, CalendarException[]>();
+    for (const e of exceptions) {
+      const key = `${e.isClosure ? "1" : "0"} ${e.label}`;
+      const list = groups.get(key);
+      if (list) list.push(e);
+      else groups.set(key, [e]);
     }
-    const firstVisibleDateByRun = new Map<string, string>();
-    for (const e of sorted) {
-      if (e.date < visibleFloor) continue;
-      const id = runIdByDate.get(e.date)!;
-      if (!firstVisibleDateByRun.has(id)) firstVisibleDateByRun.set(id, e.date);
+    const runs: { runId: string; label: string; isClosure: boolean; dates: string[] }[] = [];
+    for (const rows of groups.values()) {
+      const uniqueDates = Array.from(new Set(rows.map((r) => r.date))).sort();
+      let run: string[] = [];
+      const flush = () => { if (run.length) runs.push({ runId: `${rows[0].label}|${rows[0].isClosure}|${run[0]}`, label: rows[0].label, isClosure: rows[0].isClosure, dates: run }); };
+      for (const date of uniqueDates) {
+        if (run.length && addDaysISO(run[run.length - 1], 1) === date) run.push(date);
+        else { flush(); run = [date]; }
+      }
+      flush();
     }
-    const map = new Map<string, DayInfo>();
-    for (const e of sorted) {
-      const id = runIdByDate.get(e.date)!;
-      map.set(e.date, { label: e.label, isClosure: e.isClosure, showLabel: firstVisibleDateByRun.get(id) === e.date });
+    const map = new Map<string, DayInfo[]>();
+    for (const run of runs) {
+      const firstVisible = run.dates.find((d) => d >= visibleFloor);
+      for (const date of run.dates) {
+        const list = map.get(date) || [];
+        list.push({ label: run.label, isClosure: run.isClosure, showLabel: firstVisible === date, runId: run.runId });
+        map.set(date, list);
+      }
     }
     return map;
   }, [exceptions, visibleFloor]);
 
   function findRunBounds(dateISO: string, label: string, isClosure: boolean): { start: string; end: string } {
+    const matches = (d: string) => (byDate.get(d) || []).some((e) => e.label === label && e.isClosure === isClosure);
     let start = dateISO;
-    for (;;) {
-      const prevDate = addDaysISO(start, -1);
-      const prev = byDate.get(prevDate);
-      if (prev && prev.label === label && prev.isClosure === isClosure) start = prevDate;
-      else break;
-    }
+    while (matches(addDaysISO(start, -1))) start = addDaysISO(start, -1);
     let end = dateISO;
-    for (;;) {
-      const nextDate = addDaysISO(end, 1);
-      const next = byDate.get(nextDate);
-      if (next && next.label === label && next.isClosure === isClosure) end = nextDate;
-      else break;
-    }
+    while (matches(addDaysISO(end, 1))) end = addDaysISO(end, 1);
     return { start, end };
   }
 
-  function openDayEditor(dateISO: string) {
-    const existing = byDate.get(dateISO);
-    if (existing) {
-      const { start, end } = findRunBounds(dateISO, existing.label, existing.isClosure);
-      setDayEditor({ originalStart: start, originalEnd: end, startDate: start, endDate: end, label: existing.label, isClosure: existing.isClosure });
-    } else {
-      setDayEditor({ originalStart: null, originalEnd: null, startDate: dateISO, endDate: dateISO, label: "", isClosure: false });
+  function handleDayClick(dateISO: string) {
+    const entries = byDate.get(dateISO) || [];
+    if (!entries.length) {
+      if (canEdit) openNewEventEditor(dateISO);
+      return;
     }
+    setDayPopup(dateISO);
+  }
+
+  function openNewEventEditor(dateISO: string) {
+    setDayPopup(null);
+    setDayEditor({ originalStart: null, originalEnd: null, originalLabel: null, originalIsClosure: null, startDate: dateISO, endDate: dateISO, label: "", isClosure: false });
+  }
+
+  function openEditEventEditor(dateISO: string, entry: CalendarException) {
+    const { start, end } = findRunBounds(dateISO, entry.label, entry.isClosure);
+    setDayPopup(null);
+    setDayEditor({ originalStart: start, originalEnd: end, originalLabel: entry.label, originalIsClosure: entry.isClosure, startDate: start, endDate: end, label: entry.label, isClosure: entry.isClosure });
+  }
+
+  function deleteRun(dateISO: string, entry: CalendarException) {
+    const { start, end } = findRunBounds(dateISO, entry.label, entry.isClosure);
+    setExceptions((current) => current.filter((e) => !(e.date >= start && e.date <= end && e.label === entry.label && e.isClosure === entry.isClosure)));
   }
 
   function saveDayEditor() {
     if (!dayEditor) return;
-    const { startDate, endDate, label, isClosure, originalStart, originalEnd } = dayEditor;
+    const { startDate, endDate, label, isClosure, originalStart, originalEnd, originalLabel, originalIsClosure } = dayEditor;
     if (startDate > endDate) {
       setFeedback({ type: "error", text: "시작일이 종료일보다 늦을 수 없습니다." });
       return;
@@ -300,22 +381,30 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
       return;
     }
     const trimmed = label.trim();
+    const finalLabel = trimmed || "휴교";
     setExceptions((current) => {
       let rest = current;
-      if (originalStart && originalEnd) rest = rest.filter((e) => !(e.date >= originalStart && e.date <= originalEnd));
-      rest = rest.filter((e) => !(e.date >= startDate && e.date <= endDate));
-      if (!trimmed && !isClosure) return rest;
+      // Remove only the exact run being edited -- matched by its ORIGINAL label/isClosure, not the
+      // (possibly just-changed) draft values, and never touching any other concurrent event that
+      // happens to share some of the same dates.
+      if (originalStart && originalEnd && originalLabel !== null && originalIsClosure !== null) {
+        rest = rest.filter((e) => !(e.date >= originalStart && e.date <= originalEnd && e.label === originalLabel && e.isClosure === originalIsClosure));
+      }
+      // Avoid an exact-duplicate row if the target range already carries this same label+isClosure
+      // from a different (now-adjacent) run -- they'd just merge into one run on the next render.
+      rest = rest.filter((e) => !(e.date >= startDate && e.date <= endDate && e.label === finalLabel && e.isClosure === isClosure));
+      if (!trimmed && !isClosure) return rest; // blank label + not a closure => delete-only
       const newRows: CalendarException[] = [];
-      for (let d = startDate, i = 0; i < dayCount; i++, d = addDaysISO(d, 1)) newRows.push({ date: d, label: trimmed || "휴교", isClosure });
+      for (let d = startDate, i = 0; i < dayCount; i++, d = addDaysISO(d, 1)) newRows.push({ date: d, label: finalLabel, isClosure });
       return [...rest, ...newRows].sort((a, b) => a.date.localeCompare(b.date));
     });
     setDayEditor(null);
   }
 
   function deleteDayEditorEntry() {
-    if (!dayEditor?.originalStart || !dayEditor.originalEnd) return;
-    const { originalStart, originalEnd } = dayEditor;
-    setExceptions((current) => current.filter((e) => !(e.date >= originalStart && e.date <= originalEnd)));
+    if (!dayEditor?.originalStart || !dayEditor.originalEnd || dayEditor.originalLabel === null || dayEditor.originalIsClosure === null) return;
+    const { originalStart, originalEnd, originalLabel, originalIsClosure } = dayEditor;
+    setExceptions((current) => current.filter((e) => !(e.date >= originalStart && e.date <= originalEnd && e.label === originalLabel && e.isClosure === originalIsClosure)));
     setDayEditor(null);
   }
 
@@ -341,6 +430,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
   const visibleMonths = useMemo(() => monthsInRange(term.startDate, term.endDate), [term]);
   const closureCount = useMemo(() => exceptions.filter((e) => e.isClosure && e.date >= term.startDate && e.date <= term.endDate).length, [exceptions, term]);
   const eventCount = useMemo(() => exceptions.filter((e) => !e.isClosure && e.date >= term.startDate && e.date <= term.endDate).length, [exceptions, term]);
+  const dayPopupEntries = dayPopup ? byDate.get(dayPopup) || [] : [];
 
   return (
     <section className="content-card">
@@ -350,8 +440,8 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
           <h2>학사일정</h2>
           <p className="muted">
             {canEdit
-              ? "날짜를 클릭하면 그날의 이벤트와 휴교 여부를 등록·수정할 수 있고, 시작일·종료일을 지정해 여러 날에 걸친 일정을 한 번에 등록할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. PDF를 업로드하면 휴교일을 자동으로 찾아 반영하니, 저장 전 꼭 확인해 주세요."
-              : "학교의 학사일정을 확인할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. 수정은 관리자만 할 수 있습니다."}
+              ? "날짜를 클릭하면 그날의 이벤트와 휴교 여부를 등록·수정할 수 있고, 시작일·종료일을 지정해 여러 날에 걸친 일정을 한 번에 등록할 수 있습니다. 한 날짜에 여러 일정이 겹쳐도 함께 등록할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. PDF를 업로드하면 휴교일을 자동으로 찾아 반영하니, 저장 전 꼭 확인해 주세요."
+              : "학교의 학사일정을 확인할 수 있습니다. 휴교일은 빨간색, 기타 이벤트는 파란색으로 표시됩니다. 날짜를 누르면 그날의 일정을 전체 이름으로 볼 수 있습니다. 수정은 관리자만 할 수 있습니다."}
           </p>
         </div>
       </div>
@@ -378,7 +468,7 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
 
       <div className={`calendar-months${canEdit ? "" : " calendar-readonly"}`}>
         {visibleMonths.map(({ year, month }) => (
-          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionInfo={exceptionInfo} canEdit={canEdit} onDayClick={openDayEditor} />
+          <MonthGrid key={`${year}-${month}`} year={year} month={month} exceptionInfo={exceptionInfo} canEdit={canEdit} onDayClick={handleDayClick} />
         ))}
         {!visibleMonths.length && <p className="muted">학기 시작일과 종료일을 확인해 주세요.</p>}
       </div>
@@ -386,6 +476,34 @@ export default function AcademicCalendarUpload({ canEdit }: { canEdit: boolean }
       {canEdit && (
         <div className="warning-actions">
           <button className="primary" onClick={save} disabled={saving}>{saving ? "저장 중..." : `${academicYear}학년도 학사일정 저장`}</button>
+        </div>
+      )}
+
+      {dayPopup && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDayPopup(null); }}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="day-popup-title">
+            <button type="button" className="modal-close" aria-label="닫기" onClick={() => setDayPopup(null)}>×</button>
+            <p className="eyebrow">CALENDAR DAY</p>
+            <h2 id="day-popup-title">{dayPopup}</h2>
+            <ul className="day-popup-list">
+              {dayPopupEntries.map((entry, i) => (
+                <li key={`${entry.label}-${entry.isClosure}-${i}`} className="day-popup-item">
+                  <span className={`day-popup-badge ${entry.isClosure ? "exception" : "event"}`}>{entry.isClosure ? "휴교" : "이벤트"}</span>
+                  <span className="day-popup-label">{entry.label}</span>
+                  {canEdit && (
+                    <div className="day-popup-item-actions">
+                      <button type="button" className="secondary" onClick={() => openEditEventEditor(dayPopup, entry)}>수정</button>
+                      <button type="button" className="danger-outline-button" onClick={() => deleteRun(dayPopup, entry)}>삭제</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={() => setDayPopup(null)}>닫기</button>
+              {canEdit && <button type="button" className="primary" onClick={() => openNewEventEditor(dayPopup)}>새 일정 추가</button>}
+            </div>
+          </div>
         </div>
       )}
 
