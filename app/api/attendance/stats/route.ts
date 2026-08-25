@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
 import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS, computePresentEstimate } from "@/lib/attendance/schoolDays";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   ]);
   const exceptionDates = new Set((exceptionRows || []).map((r: any) => r.date));
   const totalInstructionalDays = term?.total_instructional_days ?? DEFAULT_TOTAL_INSTRUCTIONAL_DAYS;
-  const rows = (students || []).map((student: any) => {
+  const rows = sortStudentsByGrade(students || []).map((student: any) => {
     const summary = summaries[student.id];
     return {
       id: student.id,

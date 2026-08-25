@@ -21,3 +21,9 @@ export function compareGrades(a: string, b: string): number {
 export function sortGrades<T extends string>(grades: readonly T[]): T[] {
   return [...grades].sort(compareGrades);
 }
+
+/** Orders student rows by grade (G1..G12, not the string order G1, G10, G11, G12, G2)
+ * and then by name, so lists stay consistent with the grade filter options. */
+export function sortStudentsByGrade<T extends { grade: string; name: string }>(students: readonly T[]): T[] {
+  return [...students].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name));
+}

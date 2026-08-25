@@ -4,7 +4,7 @@ import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { latestStatusByStudentDate } from "@/lib/attendance/aggregate";
 import { emptyExceptionCounts, type AttendanceExceptionStatus, type AttendanceGridStudent, type AttendanceStatus } from "@/lib/attendance/types";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
   }
   const latestMap = latestStatusByStudentDate(entries);
 
-  const rows: AttendanceGridStudent[] = (students || []).map((student: any) => {
+  const rows: AttendanceGridStudent[] = sortStudentsByGrade(students || []).map((student: any) => {
     const daily: Record<string, AttendanceStatus> = Object.fromEntries(dates.map((date) => [date, "present" as AttendanceStatus]));
     const monthlyCounts = emptyExceptionCounts();
     const semesterCounts = emptyExceptionCounts();

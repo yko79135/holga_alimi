@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
 
   const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
   const praiseSummaries = summarizeWarningsForStudents(praiseEntries, ids);
-  const rows = (students || []).map((student: any) => ({
+  const rows = sortStudentsByGrade(students || []).map((student: any) => ({
     id: student.id,
     name: student.name,
     grade: student.grade,
