@@ -195,6 +195,10 @@ h3 {
   gap: 10px;
   flex-wrap: wrap;
 }
+.topbar-actions > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .view-switcher {
   display: flex;
   gap: 6px;
@@ -1001,7 +1005,7 @@ h3 {
     width: 34px;
     height: 32px;
   }
-  .topbar-actions {
+  .topbar .topbar-actions {
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
@@ -1012,14 +1016,14 @@ h3 {
     padding-bottom: 3px;
     scrollbar-width: none;
   }
-  .topbar-actions::-webkit-scrollbar {
+  .topbar .topbar-actions::-webkit-scrollbar {
     display: none;
   }
   .view-switcher {
     flex-shrink: 0;
   }
   .view-switcher .filter,
-  .topbar-actions .secondary {
+  .topbar .topbar-actions .secondary {
     white-space: nowrap;
     flex-shrink: 0;
   }
