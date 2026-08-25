@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole } from "@/lib/roles";
+import { resolveAuthNotice } from "@/lib/auth/notices";
 
 type PushState =
   | "idle"
@@ -76,7 +77,7 @@ async function getRegistration() {
   return registration;
 }
 
-export default function AccountSettings({ email, roles }: { email: string; roles?: AppRole[] }) {
+export default function AccountSettings({ email, roles, notice }: { email: string; roles?: AppRole[]; notice?: string }) {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -95,6 +96,8 @@ export default function AccountSettings({ email, roles }: { email: string; roles
   const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   const push = useMemo(() => pushError || PUSH_MESSAGES[pushState], [pushError, pushState]);
+  // Outcome of an auth email link, handed over by /auth/callback via ?notice=.
+  const authNotice = useMemo(() => resolveAuthNotice(notice), [notice]);
 
   useEffect(() => {
     function onServiceWorkerError(event: Event) {
@@ -173,7 +176,9 @@ export default function AccountSettings({ email, roles }: { email: string; roles
     setEmailCurrentPassword("");
     setNewEmail("");
     setPendingEmail(data.user?.new_email || trimmedEmail);
-    setEmailMsg("확인 메일을 발송했습니다. 새 이메일 주소로 전달된 링크를 눌러야 변경이 완료됩니다. (Supabase 프로젝트에서 이메일 변경 확인이 켜져 있어야 합니다.)");
+    setEmailMsg(
+      "확인 메일을 발송했습니다. 이 프로젝트는 '보안 이메일 변경'이 켜져 있어 기존 이메일과 새 이메일 양쪽으로 확인 메일이 발송되며, 두 링크를 모두 눌러야 변경이 완료됩니다. 링크는 발송 후 24시간 안에, 변경을 요청한 것과 같은 브라우저에서 열어주세요.",
+    );
   }
 
   async function enablePush() {
@@ -299,6 +304,15 @@ export default function AccountSettings({ email, roles }: { email: string; roles
           <p className="eyebrow">ACCOUNT</p>
           <h2>로그인 이메일 변경</h2>
           <p className="muted">현재 이메일: {email}{pendingEmail && ` · 확인 대기 중: ${pendingEmail}`}</p>
+          {authNotice && (
+            <p
+              role={authNotice.tone === "error" ? "alert" : "status"}
+              className={authNotice.tone === "error" ? "form-error" : "success-message"}
+            >
+              {authNotice.message}
+            </p>
+          )}
+          <p className="muted">확인 메일은 기존 이메일과 새 이메일 양쪽으로 발송됩니다. 두 링크를 모두 눌러야 변경이 완료되며, 링크는 24시간 뒤 만료됩니다.</p>
           <form onSubmit={changeEmail}>
             <label>현재 비밀번호</label>
             <input type="password" autoComplete="current-password" value={emailCurrentPassword} onChange={(e) => setEmailCurrentPassword(e.target.value)} required />
