@@ -2,7 +2,32 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicConfig } from "./config";
 
+/** True when a request carries the payload of a Supabase auth email link (PKCE `code`, a
+ * `token_hash` + `type` pair, or a GoTrue error). */
+function carriesAuthLinkPayload(params: URLSearchParams) {
+  return params.has("code") || (params.has("token_hash") && params.has("type")) || params.has("error_description");
+}
+
 export async function updateSession(request: NextRequest) {
+  // Supabase only honours `emailRedirectTo` when the exact URL is in the project's Redirect URLs
+  // allowlist; with an empty allowlist it falls back to the Site URL, so the confirmation link
+  // lands on "/" (which redirects to /dashboard and drops the query) instead of /auth/callback and
+  // the link looks dead. Forward any auth payload to the callback route wherever it lands, so the
+  // flow does not depend on a dashboard setting this app cannot configure.
+  if (
+    request.method === "GET" &&
+    !request.nextUrl.pathname.startsWith("/auth/callback") &&
+    !request.nextUrl.pathname.startsWith("/api/") &&
+    carriesAuthLinkPayload(request.nextUrl.searchParams)
+  ) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    if (!callbackUrl.searchParams.has("next")) {
+      callbackUrl.searchParams.set("next", request.nextUrl.pathname === "/" ? "/account" : request.nextUrl.pathname);
+    }
+    return NextResponse.redirect(callbackUrl);
+  }
+
   let response = NextResponse.next({ request });
   let supabaseConfig: ReturnType<typeof getSupabasePublicConfig>;
 

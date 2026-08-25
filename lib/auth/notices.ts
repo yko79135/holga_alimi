@@ -2,6 +2,7 @@
  * Shared by /auth/callback (which sets them), the login form and 계정 설정 (which show them). */
 export type AuthNoticeCode =
   | "email_change_done"
+  | "confirmed"
   | "email_change_partial"
   | "link_expired"
   | "verifier_missing"
@@ -15,6 +16,10 @@ const AUTH_NOTICES: Record<AuthNoticeCode, AuthNotice> = {
   email_change_done: {
     tone: "success",
     message: "이메일 변경이 확인되었습니다. 앞으로는 새 이메일 주소로 로그인해 주세요.",
+  },
+  confirmed: {
+    tone: "success",
+    message: "확인이 완료되었습니다.",
   },
   email_change_partial: {
     tone: "info",
