@@ -98,4 +98,8 @@ create trigger warning_entries_category_valid
   before insert or update of category, kind on public.warning_entries
   for each row execute function public.validate_warning_entry_category();
 
+-- 트리거로만 호출되는 함수라 PostgREST의 /rest/v1/rpc로 노출될 이유가 없습니다. 트리거 발동에는
+-- EXECUTE 권한 검사가 없으므로 회수해도 위 트리거는 그대로 동작합니다.
+revoke execute on function public.validate_warning_entry_category() from public, anon, authenticated;
+
 notify pgrst, 'reload schema';
