@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { categoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_DISCIPLINE_POINT_VALUE, DISCIPLINE_CATEGORY_POINT_HINTS, POINT_KIND_LABELS, type PointKind } from "@/lib/warnings/categories";
+import { categoryOptionLabel, fallbackCategoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_CATEGORY_HINT_LENGTH, MAX_CATEGORY_NAME_LENGTH, MAX_DISCIPLINE_POINT_VALUE, POINT_KIND_LABELS, POINT_KIND_SHORT_LABELS, type PointCategory, type PointKind } from "@/lib/warnings/categories";
 import { compareGrades, sortGrades } from "@/lib/grade-sort";
 
 type Student = { id: string; name: string; grade: string; active?: boolean };
@@ -16,7 +16,6 @@ const KIND_META: Record<PointKind, { eyebrow: string; title: string; description
 
 export default function PointGrantForm({ role, kind, students }: { role: string; kind: PointKind; students: Student[] }) {
   const meta = KIND_META[kind];
-  const categories = categoriesForKind(kind);
   const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name)), [students]);
 
   const [pickerGrade, setPickerGrade] = useState("");
@@ -29,7 +28,16 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const [points, setPoints] = useState(String(DEFAULT_POINT_VALUE));
   const [detail, setDetail] = useState("");
   const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>([]);
+  const [categories, setCategories] = useState<PointCategory[]>([]);
+  // False while showing the seeded fallback list, whose rows have no DB id to manage.
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [newClassName, setNewClassName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryHint, setNewCategoryHint] = useState("");
+  const [categoryPending, setCategoryPending] = useState(false);
+  const [categoryMsg, setCategoryMsg] = useState("");
+  const [categoryErr, setCategoryErr] = useState("");
+  const [deletingCategory, setDeletingCategory] = useState<PointCategory | null>(null);
   const [pending, setPending] = useState(false);
   const [classPending, setClassPending] = useState(false);
   const [msg, setMsg] = useState("");
@@ -46,8 +54,27 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
     }
   }, []);
 
+  /** The category list is admin-managed at runtime, so it comes from the API rather than a
+   * constant. On failure we fall back to the seeded defaults so teachers can still grant points. */
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/admin/point-categories?kind=${kind}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "카테고리 목록을 불러오지 못했습니다.");
+      setCategories(result.categories || []);
+      setCategoriesLoaded(true);
+      setCategoryErr("");
+    } catch (error) {
+      setCategories(fallbackCategoriesForKind(kind));
+      setCategoriesLoaded(false);
+      setCategoryErr(error instanceof Error ? error.message : "카테고리 목록을 불러오지 못했습니다.");
+    }
+  }, [kind]);
+
   useEffect(() => { void loadClassPeriods(); }, [loadClassPeriods]);
+  useEffect(() => { void loadCategories(); }, [loadCategories]);
   useLiveRefresh({ channelName: `point-grant-classes-${role}`, tables: [{ table: "class_periods" }], onRefresh: () => { void loadClassPeriods(); } });
+  useLiveRefresh({ channelName: `point-grant-categories-${kind}-${role}`, tables: [{ table: "point_categories" }], onRefresh: () => { void loadCategories(); } });
 
   const grades = useMemo(() => sortGrades(Array.from(new Set(activeStudents.map((s) => s.grade)))), [activeStudents]);
   const filteredStudents = useMemo(
@@ -55,6 +82,14 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
     [activeStudents, pickerGrade, pickerSearch],
   );
   const selectableClasses = role === "admin" ? classPeriods : classPeriods.filter((c) => c.active);
+  // Inactive categories stay out of the dropdown for everyone -- the grant API rejects them too.
+  const selectableCategories = useMemo(() => categories.filter((c) => c.active), [categories]);
+
+  // A category the admin just deactivated or deleted must not stay selected.
+  useEffect(() => {
+    if (!category || category === CUSTOM_CATEGORY) return;
+    if (!selectableCategories.some((c) => c.name === category)) setCategory("");
+  }, [category, selectableCategories]);
 
   const pointsValue = Number(points);
   const pointsValid = isValidPointValue(kind, pointsValue);
@@ -137,6 +172,69 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
     }
   }
 
+  async function addCategory() {
+    const name = newCategoryName.trim();
+    if (!name || categoryPending) return;
+    setCategoryPending(true);
+    setCategoryErr("");
+    setCategoryMsg("");
+    try {
+      const response = await fetch("/api/admin/point-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, name, pointHint: newCategoryHint.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "카테고리를 추가하지 못했습니다.");
+      setNewCategoryName("");
+      setNewCategoryHint("");
+      setCategoryMsg(`"${result.category?.name || name}" 카테고리를 추가했습니다.`);
+      await loadCategories();
+    } catch (error) {
+      setCategoryErr(error instanceof Error ? error.message : "카테고리를 추가하지 못했습니다.");
+    } finally {
+      setCategoryPending(false);
+    }
+  }
+
+  async function toggleCategory(target: PointCategory) {
+    if (categoryPending) return;
+    setCategoryPending(true);
+    setCategoryErr("");
+    setCategoryMsg("");
+    try {
+      const response = await fetch(`/api/admin/point-categories/${target.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !target.active }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "카테고리 상태를 변경하지 못했습니다.");
+      setCategoryMsg(`"${target.name}" 카테고리를 ${target.active ? "비활성화" : "활성화"}했습니다.`);
+      await loadCategories();
+    } catch (error) {
+      setCategoryErr(error instanceof Error ? error.message : "카테고리 상태를 변경하지 못했습니다.");
+    } finally {
+      setCategoryPending(false);
+    }
+  }
+
+  async function deleteCategory() {
+    const target = deletingCategory;
+    if (!target || categoryPending) return;
+    setCategoryPending(true);
+    setCategoryErr("");
+    setCategoryMsg("");
+    try {
+      const response = await fetch(`/api/admin/point-categories/${target.id}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "카테고리를 삭제하지 못했습니다.");
+      setDeletingCategory(null);
+      setCategoryMsg(`"${target.name}" 카테고리를 삭제했습니다.`);
+      await loadCategories();
+    } catch (error) {
+      setCategoryErr(error instanceof Error ? error.message : "카테고리를 삭제하지 못했습니다.");
+    } finally {
+      setCategoryPending(false);
+    }
+  }
+
   return (
     <section className="content-card">
       <div className="section-heading">
@@ -163,6 +261,44 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {role === "admin" && (
+        <div className="warning-toolbar">
+          <label>{meta.categoryLabel} 관리
+            <input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder={`새 ${meta.categoryLabel} 이름`}
+              maxLength={MAX_CATEGORY_NAME_LENGTH}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
+            />
+          </label>
+          <label>참고 점수 (선택)
+            <input
+              value={newCategoryHint}
+              onChange={(e) => setNewCategoryHint(e.target.value)}
+              placeholder="예: 1점, 10~30점"
+              maxLength={MAX_CATEGORY_HINT_LENGTH}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
+            />
+          </label>
+          <button type="button" className="secondary" onClick={addCategory} disabled={!newCategoryName.trim() || categoryPending}>추가</button>
+          {categoriesLoaded && !!categories.length && (
+            <div className="account-meta">
+              {categories.map((c) => (
+                <span className="pill class-period-pill" key={c.id}>
+                  {categoryOptionLabel(c)}{!c.active ? " (비활성)" : ""}
+                  <button type="button" className="secondary" onClick={() => toggleCategory(c)} disabled={categoryPending}>
+                    {c.active ? "비활성화" : "활성화"}
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setDeletingCategory(c)} disabled={categoryPending}>삭제</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="muted">추가한 카테고리는 {POINT_KIND_SHORT_LABELS[kind]} 점수 부여 화면의 카테고리 목록에 바로 나타납니다. 참고 점수는 안내용 표시일 뿐 입력 점수를 제한하지 않습니다.</p>
         </div>
       )}
 
@@ -193,7 +329,8 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
           <label>{meta.categoryLabel}
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">카테고리 선택</option>
-              {categories.map((c) => <option key={c} value={c}>{kind === "discipline" && DISCIPLINE_CATEGORY_POINT_HINTS[c as keyof typeof DISCIPLINE_CATEGORY_POINT_HINTS] ? `${c} (${DISCIPLINE_CATEGORY_POINT_HINTS[c as keyof typeof DISCIPLINE_CATEGORY_POINT_HINTS]})` : c}</option>)}
+              {selectableCategories.map((c) => <option key={c.id} value={c.name}>{categoryOptionLabel(c)}</option>)}
+              <option value={CUSTOM_CATEGORY}>{CUSTOM_CATEGORY}</option>
             </select>
           </label>
           {isCustomCategory && (
@@ -219,6 +356,8 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
 
       {!pointsValid && points !== "" && <p className="form-error">{kind === "discipline" ? `점수는 1~${MAX_DISCIPLINE_POINT_VALUE} 사이의 정수로 입력해 주세요.` : "점수는 1 이상의 정수로 입력해 주세요."}</p>}
       {isCustomCategory && !customCategoryValid && <p className="form-error">직접 입력한 사유를 작성해 주세요.</p>}
+      {categoryErr && <p className="form-error">{categoryErr}</p>}
+      {categoryMsg && <p className="success-message">{categoryMsg}</p>}
       {err && <p className="form-error">{err}</p>}
       {msg && <p className="success-message">{msg}</p>}
 
@@ -240,6 +379,19 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         onConfirm={() => void submit()}
       >
         <p>선택한 학생 {studentIds.length}명 전원에게 &ldquo;{isCustomCategory ? customCategoryLabel : category}&rdquo; 사유로 {POINT_KIND_LABELS[kind]} {pointsValue}점이 한번에 부여되고, 각 학생의 학부모에게 개별 알림이 전송됩니다. 계속할까요?</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deletingCategory}
+        title={`${meta.categoryLabel} 삭제`}
+        eyebrow="DELETE CATEGORY"
+        confirmLabel="삭제"
+        variant="danger"
+        pending={categoryPending}
+        onClose={() => setDeletingCategory(null)}
+        onConfirm={() => void deleteCategory()}
+      >
+        <p>&ldquo;{deletingCategory?.name}&rdquo; 카테고리를 목록에서 삭제할까요? 이미 점수 기록에 사용된 카테고리는 삭제할 수 없으니, 그런 경우에는 비활성화해 주세요.</p>
       </ConfirmDialog>
     </section>
   );

@@ -83,6 +83,18 @@ Add these Vercel environment variables without committing real secrets:
 
 Existing Supabase variables remain required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and server-only `SUPABASE_SERVICE_ROLE_KEY`.
 
+## 훈계·칭찬 점수 카테고리 관리
+
+점수 카테고리 목록은 이제 코드 상수가 아니라 `point_categories` 테이블에 있습니다. Supabase SQL Editor에서 `supabase/20260826_point_categories.sql`를 실행하세요. 기존 카테고리 목록이 초기 데이터로 들어가고, `warning_entries`의 고정 카테고리 CHECK 제약이 테이블을 참조하는 트리거로 교체됩니다.
+
+실행 후 관리자로 로그인하면 `훈계 점수`·`칭찬 점수` 탭 상단에서 수업 관리 옆에 카테고리 관리가 보입니다.
+
+- 추가: 카테고리 이름(40자 이내)과 참고 점수(선택)를 입력하면 해당 탭의 카테고리 목록에 바로 추가됩니다. 참고 점수는 `거짓말 (10/5점)`처럼 안내로만 표시되고 입력 점수를 제한하지 않습니다.
+- 비활성화: 목록에서만 감춰지고 과거 기록은 그대로 남습니다. 더 이상 쓰지 않는 카테고리는 삭제 대신 비활성화를 권장합니다.
+- 삭제: 아직 한 번도 점수 부여에 쓰이지 않은 카테고리만 삭제할 수 있습니다.
+
+교사 계정에서는 카테고리를 고르기만 하고, 추가·수정은 관리자만 할 수 있습니다.
+
 ## PWA icon cache after update
 
 Users who installed the app before this icon update may continue seeing the old cached icon. They should:

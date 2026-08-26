@@ -4,7 +4,7 @@ import { sendNoticePushes, notifyStaffOfDisciplinePoint } from "@/lib/push/send"
 import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { changeType, buildPointNotice } from "@/lib/warnings/format";
-import { CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_DISCIPLINE_POINT_VALUE, isValidCategory, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
+import { CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_DISCIPLINE_POINT_VALUE, isValidPointValue, type PointKind } from "@/lib/warnings/categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -65,11 +65,20 @@ export async function POST(req: Request) {
   const customCategoryLabel = isCustomCategory ? String(body.customCategoryLabel || "").trim() : "";
   const baseDiagnostic = { requestId, userId: user.id, role, kind: kind || undefined, studentIds };
 
-  if (!kind || !studentIds.length || !classPeriodId || !idempotencyKey || !isValidCategory(kind as PointKind, category)) {
+  if (!kind || !studentIds.length || !classPeriodId || !idempotencyKey || !category) {
     return NextResponse.json({ error: "학생, 카테고리, 수업을 모두 선택해 주세요." }, { status: 400 });
   }
   if (isCustomCategory && !customCategoryLabel) {
     return NextResponse.json({ error: "직접 입력한 사유를 작성해 주세요." }, { status: 400 });
+  }
+  // Admins manage the category list at runtime (supabase/20260826_point_categories.sql), so the
+  // allowed values live in the DB rather than in a constant here.
+  if (!isCustomCategory) {
+    const categoryRes = await supabase.from("point_categories").select("id,active").eq("kind", kind).eq("name", category).maybeSingle();
+    if (categoryRes.error) return failure({ ...baseDiagnostic, operation: "select", table: "point_categories", errorCode: categoryRes.error.code, errorMessage: categoryRes.error.message });
+    if (!categoryRes.data || !categoryRes.data.active) {
+      return NextResponse.json({ error: "사용할 수 없는 카테고리입니다. 목록을 새로고침한 뒤 다시 선택해 주세요." }, { status: 400 });
+    }
   }
   if (!isValidPointValue(kind as PointKind, points)) {
     return NextResponse.json({ error: kind === "discipline" ? `점수는 1~${MAX_DISCIPLINE_POINT_VALUE} 사이의 정수로 입력해 주세요.` : "점수는 1 이상의 정수로 입력해 주세요." }, { status: 400 });
