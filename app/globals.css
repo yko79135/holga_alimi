@@ -1564,6 +1564,45 @@ h3 {
   margin: 0 0 8px;
   color: var(--teal-900);
 }
+.point-history-note {
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+.point-history-scroll {
+  overflow-x: auto;
+}
+.point-history-table {
+  min-width: 640px;
+}
+.point-history-table input,
+.point-history-table select {
+  width: 100%;
+  min-width: 88px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 8px;
+  background: var(--white);
+}
+.point-history-editing td {
+  background: var(--mint-100);
+}
+.point-history-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.point-history-actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: none;
+}
+.point-history-locked {
+  font-size: 12px;
+  font-weight: 900;
+}
 @media (max-width: 700px) {
   .warning-toolbar {
     grid-template-columns: 1fr 1fr;
