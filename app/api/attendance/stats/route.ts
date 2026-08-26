@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeAttendanceForStudents } from "@/lib/attendance/stats";
 import { DEFAULT_TOTAL_INSTRUCTIONAL_DAYS, computePresentEstimate } from "@/lib/attendance/schoolDays";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -31,8 +31,9 @@ export async function GET(req: Request) {
   if (studentName) studentQuery = studentQuery.ilike("name", `%${studentName}%`);
   const { data: students, error: studentsError } = await studentQuery;
   if (studentsError) return NextResponse.json({ error: "출결 통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
+  const orderedStudents = sortStudentsByGrade((students || []) as any[]);
 
-  const ids = (students || []).map((s: any) => s.id);
+  const ids = orderedStudents.map((s: any) => s.id);
   let entries: any[] = [];
   if (ids.length) {
     const { data, error } = await a.supabase.from("attendance_entries").select("student_id,attendance_date,new_status,created_at").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
   ]);
   const exceptionDates = new Set((exceptionRows || []).map((r: any) => r.date));
   const totalInstructionalDays = term?.total_instructional_days ?? DEFAULT_TOTAL_INSTRUCTIONAL_DAYS;
-  const rows = (students || []).map((student: any) => {
+  const rows = orderedStudents.map((student: any) => {
     const summary = summaries[student.id];
     return {
       id: student.id,
@@ -60,5 +61,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ students: rows, totalInstructionalDays, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
+  return NextResponse.json({ students: rows, totalInstructionalDays, grades: sortGrades(Array.from(new Set(orderedStudents.map((s: any) => s.grade)))) });
 }

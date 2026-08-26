@@ -4,7 +4,7 @@ import { getUserRoles } from "@/lib/roles-server";
 import { effectiveStaffRole } from "@/lib/roles";
 import { latestStatusByStudentDate } from "@/lib/attendance/aggregate";
 import { emptyExceptionCounts, type AttendanceExceptionStatus, type AttendanceGridStudent, type AttendanceStatus } from "@/lib/attendance/types";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -45,8 +45,9 @@ export async function GET(req: Request) {
   if (studentName) studentQuery = studentQuery.ilike("name", `%${studentName}%`);
   const { data: students, error: studentsError } = await studentQuery;
   if (studentsError) return NextResponse.json({ error: "출결 내역을 불러오는 중 오류가 발생했습니다." }, { status: 500 });
+  const orderedStudents = sortStudentsByGrade((students || []) as any[]);
 
-  const ids = (students || []).map((s: any) => s.id);
+  const ids = orderedStudents.map((s: any) => s.id);
   let entries: any[] = [];
   if (ids.length) {
     const { data, error } = await a.supabase.from("attendance_entries").select("student_id,attendance_date,new_status,created_at").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
@@ -55,7 +56,7 @@ export async function GET(req: Request) {
   }
   const latestMap = latestStatusByStudentDate(entries);
 
-  const rows: AttendanceGridStudent[] = (students || []).map((student: any) => {
+  const rows: AttendanceGridStudent[] = orderedStudents.map((student: any) => {
     const daily: Record<string, AttendanceStatus> = Object.fromEntries(dates.map((date) => [date, "present" as AttendanceStatus]));
     const monthlyCounts = emptyExceptionCounts();
     const semesterCounts = emptyExceptionCounts();
@@ -83,5 +84,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ dates, students: rows, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
+  return NextResponse.json({ dates, students: rows, grades: sortGrades(Array.from(new Set(orderedStudents.map((s: any) => s.grade)))) });
 }

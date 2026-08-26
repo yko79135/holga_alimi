@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
-import { sortGrades } from "@/lib/grade-sort";
+import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
 
 export const runtime = "nodejs";
 
@@ -30,8 +30,9 @@ export async function GET(req: Request) {
   if (studentName) studentQuery = studentQuery.ilike("name", `%${studentName}%`);
   const { data: students, error: studentsError } = await studentQuery;
   if (studentsError) return NextResponse.json({ error: "통계를 불러오는 중 오류가 발생했습니다." }, { status: 500 });
+  const orderedStudents = sortStudentsByGrade((students || []) as any[]);
 
-  const ids = (students || []).map((s: any) => s.id);
+  const ids = orderedStudents.map((s: any) => s.id);
   let disciplineEntries: any[] = [];
   let praiseEntries: any[] = [];
   const graceTotals = new Map<string, number>();
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
 
   const disciplineSummaries = summarizeWarningsForStudents(disciplineEntries, ids);
   const praiseSummaries = summarizeWarningsForStudents(praiseEntries, ids);
-  const rows = (students || []).map((student: any) => ({
+  const rows = orderedStudents.map((student: any) => ({
     id: student.id,
     name: student.name,
     grade: student.grade,
@@ -61,5 +62,5 @@ export async function GET(req: Request) {
     graceTotal: graceTotals.get(student.id) || 0,
   }));
 
-  return NextResponse.json({ students: rows, grades: sortGrades(Array.from(new Set((students || []).map((s: any) => s.grade)))) });
+  return NextResponse.json({ students: rows, grades: sortGrades(Array.from(new Set(orderedStudents.map((s: any) => s.grade)))) });
 }
