@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { changeType } from "@/lib/warnings/format";
 import { MAX_DISCIPLINE_POINT_VALUE } from "@/lib/warnings/categories";
 import { isValidDateOnly, termForDate } from "@/lib/warnings/term";
+import { refreshGeneratedPointNotice } from "@/lib/warnings/notice-refresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,16 +119,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return staffJsonError("점수 내역을 수정하지 못했습니다.", 500);
   }
 
+  // Bring the 학부모 안내문 in line with the corrected entry, so the parent is not left reading
+  // the 점수 and 사유 that were first announced. No push goes out -- see refreshGeneratedPointNotice.
+  const noticeResult = await refreshGeneratedPointNotice(admin, { batchId: entry.batch_id, studentId: entry.student_id, today: new Date().toISOString().slice(0, 10) });
+
   await notifyParents(admin, entry.student_id, entry.kind, entry.batch_id);
 
+  const noticeNote = noticeResult === "updated"
+    ? " 학부모 안내문도 정정된 내용으로 갱신했습니다."
+    : noticeResult === "failed"
+      ? " 다만 학부모 안내문 갱신에 실패해 안내문에는 이전 내용이 남아 있습니다."
+      : "";
   return NextResponse.json({
     success: true,
     entry: updated,
-    // The generated 학부모 안내문 is left as sent -- it records what actually went out. Only the
-    // ledger (and therefore every 점수 합계) follows the edit.
-    message: movedTerm
+    noticeUpdated: noticeResult === "updated",
+    message: (movedTerm
       ? "점수 내역을 수정했습니다. 날짜가 바뀌어 다른 월·학기 통계로 이동할 수 있습니다."
-      : "점수 내역을 수정했습니다.",
+      : "점수 내역을 수정했습니다.") + noticeNote,
   });
 }
 
@@ -170,6 +179,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
         deletedNotice = !noticeRes.error && !!noticeRes.data?.length;
       }
     }
+  } else {
+    // Entries survive, so the notice stays -- but it still lists the deleted one until refreshed.
+    await refreshGeneratedPointNotice(admin, { batchId: entry.batch_id, studentId: entry.student_id, today: new Date().toISOString().slice(0, 10) });
   }
 
   await notifyParents(admin, entry.student_id, entry.kind, entry.batch_id);
