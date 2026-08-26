@@ -21,3 +21,10 @@ export function compareGrades(a: string, b: string): number {
 export function sortGrades<T extends string>(grades: readonly T[]): T[] {
   return [...grades].sort(compareGrades);
 }
+
+/** Order student rows the way the teacher screens display them: by grade
+ * (natural, so G12 follows G9 rather than G1) and then by name. Postgres
+ * `order("grade")` sorts the label as text, so rows must be re-sorted here. */
+export function sortStudentsByGrade<T extends { grade: string; name: string }>(students: readonly T[]): T[] {
+  return [...students].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name));
+}
