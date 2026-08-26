@@ -246,11 +246,13 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       </div>
 
       {role === "admin" && (
-        <div className="warning-toolbar">
-          <label>수업 관리<input value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="새 수업 이름" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addClassPeriod(); } }} /></label>
-          <button type="button" className="secondary" onClick={addClassPeriod} disabled={!newClassName.trim() || classPending}>추가</button>
+        <div className="admin-manage-toolbar">
+          <div className="admin-manage-row">
+            <label>수업 관리<input value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="새 수업 이름" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addClassPeriod(); } }} /></label>
+            <button type="button" className="secondary admin-manage-add" onClick={addClassPeriod} disabled={!newClassName.trim() || classPending}>추가</button>
+          </div>
           {!!classPeriods.length && (
-            <div className="account-meta">
+            <div className="account-meta admin-manage-scroll">
               {classPeriods.map((c) => (
                 <span className="pill class-period-pill" key={c.id}>
                   {c.name}{!c.active ? " (비활성)" : ""}
@@ -265,28 +267,30 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
       )}
 
       {role === "admin" && (
-        <div className="warning-toolbar">
-          <label>{meta.categoryLabel} 관리
-            <input
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              placeholder={`새 ${meta.categoryLabel} 이름`}
-              maxLength={MAX_CATEGORY_NAME_LENGTH}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
-            />
-          </label>
-          <label>참고 점수 (선택)
-            <input
-              value={newCategoryHint}
-              onChange={(e) => setNewCategoryHint(e.target.value)}
-              placeholder="예: 1점, 10~30점"
-              maxLength={MAX_CATEGORY_HINT_LENGTH}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
-            />
-          </label>
-          <button type="button" className="secondary" onClick={addCategory} disabled={!newCategoryName.trim() || categoryPending}>추가</button>
+        <div className="admin-manage-toolbar">
+          <div className="admin-manage-row">
+            <label>{meta.categoryLabel} 관리
+              <input
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder={`새 ${meta.categoryLabel} 이름`}
+                maxLength={MAX_CATEGORY_NAME_LENGTH}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
+              />
+            </label>
+            <label>참고 점수 (선택)
+              <input
+                value={newCategoryHint}
+                onChange={(e) => setNewCategoryHint(e.target.value)}
+                placeholder="예: 1점, 10~30점"
+                maxLength={MAX_CATEGORY_HINT_LENGTH}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
+              />
+            </label>
+            <button type="button" className="secondary admin-manage-add" onClick={addCategory} disabled={!newCategoryName.trim() || categoryPending}>추가</button>
+          </div>
           {categoriesLoaded && !!categories.length && (
-            <div className="account-meta">
+            <div className="account-meta admin-manage-scroll">
               {categories.map((c) => (
                 <span className="pill class-period-pill" key={c.id}>
                   {categoryOptionLabel(c)}{!c.active ? " (비활성)" : ""}
