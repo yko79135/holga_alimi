@@ -451,7 +451,7 @@ export default function PointStats({ role }: { role: string }) {
                         <div className="point-history">
                           <p className="eyebrow">POINT HISTORY</p>
                           <h3>칭찬·훈계 상세 내역</h3>
-                          <p className="muted point-history-note">잘못 기재된 내역은 수정하거나 삭제할 수 있습니다. 변경 내용은 학부모 화면의 합계에도 바로 반영됩니다.</p>
+                          <p className="muted point-history-note">잘못 기재된 내역은 수정하거나 삭제할 수 있습니다. 변경 내용은 학부모 화면의 합계와 이미 발송된 안내문에도 반영되며, 알림(푸시)은 다시 가지 않습니다.</p>
                           {entryStatus && <p className={entryStatus.type === "success" ? "success-message" : "form-error"}>{entryStatus.text}</p>}
                           {entriesLoadingId === row.id && <p className="muted">불러오는 중...</p>}
                           {entriesError && entriesLoadingId !== row.id && <p className="form-error">{entriesError}</p>}
