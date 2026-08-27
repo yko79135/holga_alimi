@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { adminJsonError, requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isPointKind, normalizeCategoryHint, normalizeCategoryName } from "@/lib/warnings/categories";
+import { isPointKind, normalizeCategoryHint, normalizeCategoryName, sortPointCategories } from "@/lib/warnings/categories";
 import { CATEGORY_COLUMNS, toPointCategory } from "@/lib/warnings/point-categories";
 
 export const runtime = "nodejs";
@@ -25,7 +25,8 @@ export async function GET(request: Request) {
   }
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: "카테고리 목록을 불러오지 못했습니다." }, { status: 500 });
-  return NextResponse.json({ categories: (data || []).map(toPointCategory) });
+  // Praise rows come back in 가나다 order regardless of sort_order -- see comparePointCategories.
+  return NextResponse.json({ categories: sortPointCategories((data || []).map(toPointCategory)) });
 }
 
 export async function POST(request: Request) {
