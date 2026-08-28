@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles } from "@/lib/roles-server";
 import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildSubmissionNotice } from "@/lib/early-dismissal/format";
-import { resolveApproverSlots } from "@/lib/early-dismissal/approvers";
 import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 import { serializeRequestRow, REQUEST_SELECT } from "@/lib/early-dismissal/serialize";
 
@@ -33,63 +32,48 @@ export async function GET() {
   }
 
   const rows = (data || []) as any[];
-  const grades = Array.from(new Set(rows.map((row) => (Array.isArray(row.students) ? row.students[0] : row.students)?.grade).filter(Boolean)));
+  const gradeOf = (row: any) => (Array.isArray(row.students) ? row.students[0] : row.students)?.grade;
+  const grades = Array.from(new Set(rows.map(gradeOf).filter(Boolean)));
   const admin = createAdminClient();
-  const profileIds = Array.from(new Set(rows.flatMap((row) => [row.parent_id, row.homeroom_decided_by, row.vice_principal_decided_by]).filter(Boolean)));
+  const profileIds = Array.from(new Set(rows.flatMap((row) => [row.parent_id, row.attendance_recorded_by]).filter(Boolean)));
 
-  const [homeroomRes, officerRes, acksRes, namesRes] = await Promise.all([
-    grades.length ? supabase.from("homeroom_assignments").select("grade,teacher_id,teacher_name").in("grade", grades) : Promise.resolve({ data: [] as any[] }),
-    supabase.from("school_officers").select("profile_id,person_name").eq("role_key", "vice_principal").maybeSingle(),
+  const [homeroomRes, acksRes, namesRes] = await Promise.all([
+    grades.length ? supabase.from("homeroom_assignments").select("grade,teacher_name").in("grade", grades) : Promise.resolve({ data: [] as any[] }),
     isStaff && rows.length
       ? supabase.from("early_dismissal_acknowledgements").select("request_id,staff_id,acknowledged_at").in("request_id", rows.map((row) => row.id))
       : Promise.resolve({ data: [] as any[] }),
     // Names only: a parent's RLS view of profiles hides staff, but they still need to see who
-    // signed off on their own child's request.
+    // handled their own child's request.
     profileIds.length ? admin.from("profiles").select("id,full_name").in("id", profileIds) : Promise.resolve({ data: [] as any[] }),
   ] as any);
 
-  const homerooms = new Map((((homeroomRes as any).data || []) as any[]).map((row) => [row.grade, row]));
-  const officer = (officerRes as any).data;
+  const homerooms = new Map((((homeroomRes as any).data || []) as any[]).map((row) => [row.grade, row.teacher_name as string]));
   const names = new Map<string, string>();
   for (const profile of (((namesRes as any).data || []) as any[])) names.set(profile.id, profile.full_name || "");
 
-  const ackStaffIds = Array.from(new Set((((acksRes as any).data || []) as any[]).map((ack) => ack.staff_id)));
+  const ackRows = ((acksRes as any).data || []) as any[];
+  const ackStaffIds = Array.from(new Set(ackRows.map((ack) => ack.staff_id)));
   if (ackStaffIds.length) {
     const { data: ackNames } = await admin.from("profiles").select("id,full_name").in("id", ackStaffIds);
     for (const profile of (ackNames || []) as any[]) names.set(profile.id, profile.full_name || "");
   }
 
   const acks = new Map<string, EarlyDismissalRequest["acknowledgedBy"]>();
-  for (const ack of (((acksRes as any).data || []) as any[])) {
+  for (const ack of ackRows) {
     acks.set(ack.request_id, [...(acks.get(ack.request_id) || []), { id: ack.staff_id, name: names.get(ack.staff_id) || "선생님", at: ack.acknowledged_at }]);
   }
 
-  const vicePrincipal = { teacherId: officer?.profile_id || null, name: officer?.person_name || "" };
-  const requests = rows.map((row) => {
-    const student = Array.isArray(row.students) ? row.students[0] : row.students;
-    const homeroom = homerooms.get(student?.grade);
-    return serializeRequestRow(row, {
-      homeroom: { teacherId: homeroom?.teacher_id || null, name: homeroom?.teacher_name || "" },
-      vicePrincipal,
-      names,
-      acknowledgedBy: acks.get(row.id) || [],
-    });
-  });
+  const requests = rows.map((row) => serializeRequestRow(row, {
+    homeroomTeacherName: homerooms.get(gradeOf(row)) || "",
+    names,
+    acknowledgedBy: acks.get(row.id) || [],
+  }));
 
-  const approvableIds = rows
-    .filter((row) => {
-      const student = Array.isArray(row.students) ? row.students[0] : row.students;
-      const homeroomTeacherId = homerooms.get(student?.grade)?.teacher_id || null;
-      if (homeroomTeacherId === user.id || vicePrincipal.teacherId === user.id) return true;
-      return roles.includes("admin") && (!homeroomTeacherId || !vicePrincipal.teacherId);
-    })
-    .map((row) => row.id);
-
-  return NextResponse.json({ requests, viewerId: user.id, isStaff, isAdmin: roles.includes("admin"), approvableIds });
+  return NextResponse.json({ requests, viewerId: user.id, isStaff });
 }
 
 /** A parent submits a request for one of their own children. Every teacher and admin is pushed a
- * notification; the homeroom teacher and vice principal are the ones who can then approve it. */
+ * notification -- that notification is the whole workflow; nothing waits on an approval. */
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -123,8 +107,8 @@ export async function POST(req: Request) {
   const student = Array.isArray((linkRes.data as any)?.students) ? (linkRes.data as any).students[0] : (linkRes.data as any)?.students;
   if (linkRes.error || !student) return NextResponse.json({ error: "연결된 자녀만 조퇴를 신청할 수 있습니다." }, { status: 403 });
 
-  const duplicate = await supabase.from("early_dismissal_requests").select("id").eq("student_id", studentId).eq("dismissal_date", dismissalDate).eq("status", "pending").limit(1).maybeSingle();
-  if (duplicate.data) return NextResponse.json({ error: "같은 날짜에 아직 처리되지 않은 조퇴 신청이 있습니다." }, { status: 409 });
+  const duplicate = await supabase.from("early_dismissal_requests").select("id").eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
+  if (duplicate.data) return NextResponse.json({ error: "같은 날짜에 이미 제출한 조퇴 신청이 있습니다." }, { status: 409 });
 
   const insertRes = await supabase
     .from("early_dismissal_requests")
@@ -146,10 +130,13 @@ export async function POST(req: Request) {
   }
 
   const requestId = insertRes.data.id;
-  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
+  const [{ data: profile }, homeroomRes] = await Promise.all([
+    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+    supabase.from("homeroom_assignments").select("teacher_name").eq("grade", student.grade).maybeSingle(),
+  ]);
   const parentName = (profile as any)?.full_name || "학부모";
-  const slots = await resolveApproverSlots(supabase, student.grade);
-  const content = buildSubmissionNotice({ studentName: student.name, studentGrade: student.grade, dismissalDate, dismissalTime: dismissalTime || null, reason, guardianName, returnsSameDay }, parentName);
+  const homeroomTeacherName = (homeroomRes.data as any)?.teacher_name || "";
+  const content = buildSubmissionNotice({ studentName: student.name, studentGrade: student.grade, dismissalDate, dismissalTime: dismissalTime || null, reason, guardianName, returnsSameDay }, parentName, homeroomTeacherName);
 
   after(async () => {
     try {
@@ -163,9 +150,5 @@ export async function POST(req: Request) {
     }
   });
 
-  return NextResponse.json({
-    success: true,
-    requestId,
-    message: `조퇴 신청을 접수했습니다. 모든 선생님께 알림이 전송되며, 홈룸 선생님(${slots.homeroom.name || "미지정"})과 교감 선생님(${slots.vicePrincipal.name || "미지정"})의 승인이 필요합니다.`,
-  });
+  return NextResponse.json({ success: true, requestId, message: "조퇴 신청을 접수했습니다. 모든 선생님께 알림이 전송됩니다." });
 }

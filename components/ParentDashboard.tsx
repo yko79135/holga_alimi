@@ -284,10 +284,10 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         <main className="parent-main-column">
           <nav className="staff-tabs">
             <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>학교 알림</button>
-            <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => setTab("early-dismissal")}>조퇴 신청</button>
             <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
             <button className={tab === "point-stats" ? "active" : ""} onClick={() => setTab("point-stats")}>점수 통계</button>
             <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => setTab("academic-calendar")}>학사일정</button>
+            <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => setTab("early-dismissal")}>조퇴 신청</button>
           </nav>
 
           {tab === "early-dismissal" && <ParentEarlyDismissalRequests userId={userId} students={students} />}

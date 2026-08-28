@@ -127,25 +127,12 @@ export async function sendReplyPushToTeacher(notice: { id: string; title: string
   return pushToUserIds([notice.created_by], buildReplyPushPayload(notice, parentName, replyText));
 }
 
-/** Notifies every teacher/admin that a parent submitted an early dismissal request, minus the
- * submitting parent themselves (a dual-role teacher-parent already knows they just submitted it). */
+/** Notifies every teacher/admin that a parent submitted (or withdrew) an early dismissal
+ * request, minus the submitting parent themselves -- a dual-role teacher-parent already knows
+ * they just submitted it. Staff notification is the whole point of the feature: there is no
+ * approval step, so this push is what puts the request in front of the teachers. */
 export async function notifyStaffOfEarlyDismissal(requestId: string, content: { title: string; body: string }, excludeIds: string[] = []): Promise<PushResult> {
   const staffIds = await resolveStaffRecipientIds();
   const exclude = new Set(excludeIds);
   return pushToUserIds(staffIds.filter((id) => !exclude.has(id)), buildEarlyDismissalPayload(requestId, content, "staff"));
-}
-
-/** Notifies the parents linked to the student -- not just the submitter, so a second guardian
- * sees the outcome too. */
-export async function notifyParentsOfEarlyDismissal(requestId: string, studentId: string, content: { title: string; body: string }): Promise<PushResult> {
-  const admin = createAdminClient();
-  const { data } = await admin.from("parent_students").select("parent_id").eq("student_id", studentId);
-  const parentIds = Array.from(new Set((data || []).map((row: any) => row.parent_id).filter(Boolean)));
-  return pushToUserIds(parentIds, buildEarlyDismissalPayload(requestId, content, "parent"));
-}
-
-/** Nudges specific approvers (the homeroom teacher / vice principal still owing a decision). */
-export async function notifyEarlyDismissalApprovers(requestId: string, approverIds: string[], content: { title: string; body: string }): Promise<PushResult> {
-  const ids = Array.from(new Set(approverIds.filter(Boolean)));
-  return pushToUserIds(ids, buildEarlyDismissalPayload(requestId, content, "staff"));
 }

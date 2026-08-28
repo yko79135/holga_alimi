@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment } from "@/lib/early-dismissal/format";
-import { APPROVER_ROLE_LABELS, DECISION_LABELS, MAX_REASON_LENGTH, STATUS_LABELS, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
+import { MAX_REASON_LENGTH, STATE_LABELS, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 
 type Student = { id: string; name: string; grade: string };
 
@@ -93,7 +93,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
         <div>
           <p className="eyebrow">EARLY DISMISSAL</p>
           <h2>조퇴 신청</h2>
-          <p className="muted">신청하면 모든 선생님께 알림이 전달되고, 홈룸 선생님과 교감 선생님이 모두 승인해야 확정됩니다. 승인되면 출석부에 조퇴로 기록됩니다.</p>
+          <p className="muted">신청하면 모든 선생님께 알림이 전달됩니다. 별도의 승인 절차는 없으며, 선생님이 확인 후 출석부에 조퇴로 기록합니다.</p>
         </div>
       </div>
 
@@ -145,21 +145,19 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
         {requests.map((request) => (
           <article className={`early-dismissal-row ${highlightId === request.id ? "highlight" : ""}`} key={request.id}>
             <header>
-              <span className={`tag early-dismissal-${request.status}`}>{STATUS_LABELS[request.status]}</span>
+              <span className={`tag early-dismissal-${request.state}`}>{STATE_LABELS[request.state]}</span>
               <strong>{request.studentName} · {formatDismissalMoment(request.dismissalDate, request.dismissalTime)}</strong>
             </header>
             <p className="notice-body">{request.reason}</p>
-            <dl className="early-dismissal-approvals">
-              <div>
-                <dt>{APPROVER_ROLE_LABELS.homeroom} ({request.homeroomTeacherName})</dt>
-                <dd>{DECISION_LABELS[request.homeroom.decision]}{request.homeroom.decidedByName ? ` · ${request.homeroom.decidedByName}` : ""}{request.homeroom.comment ? ` · ${request.homeroom.comment}` : ""}</dd>
-              </div>
-              <div>
-                <dt>{APPROVER_ROLE_LABELS.vice_principal} ({request.vicePrincipalName})</dt>
-                <dd>{DECISION_LABELS[request.vicePrincipal.decision]}{request.vicePrincipal.decidedByName ? ` · ${request.vicePrincipal.decidedByName}` : ""}{request.vicePrincipal.comment ? ` · ${request.vicePrincipal.comment}` : ""}</dd>
-              </div>
-            </dl>
-            {request.status === "pending" && (
+            <p className="muted">
+              홈룸 선생님: {request.homeroomTeacherName}
+              {request.attendanceRecordedAt
+                ? ` · ${new Date(request.attendanceRecordedAt).toLocaleString("ko-KR")} 출석부에 조퇴로 기록됨${request.attendanceRecordedByName ? ` (${request.attendanceRecordedByName})` : ""}`
+                : request.state === "submitted"
+                  ? " · 선생님들께 알림이 전달되었습니다."
+                  : ""}
+            </p>
+            {request.state === "submitted" && (
               <button type="button" className="secondary" onClick={() => cancel(request)}>신청 취소</button>
             )}
           </article>
