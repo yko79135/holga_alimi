@@ -90,7 +90,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
         <div>
           <p className="eyebrow">EARLY DISMISSAL</p>
           <h2>조퇴 신청 결재</h2>
-          <p className="muted">학부모가 제출한 조퇴 신청입니다. 홈룸 선생님과 교감 선생님이 모두 승인해야 확정되며, 다른 선생님은 내용을 확인할 수 있습니다.</p>
+          <p className="muted">학부모가 제출한 조퇴 신청입니다. 홈룸 선생님과 교감 선생님이 모두 승인해야 확정되며, 다른 선생님은 내용을 확인할 수 있습니다. 승인이 완료되면 해당 날짜의 출석부에 조퇴로 자동 기록됩니다.</p>
         </div>
         <span className="pill">내 결재 대기 {pendingForMe}건</span>
       </div>

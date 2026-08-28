@@ -5,6 +5,7 @@ import { getUserRoles } from "@/lib/roles-server";
 import { notifyEarlyDismissalApprovers, notifyParentsOfEarlyDismissal, notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildApproverReminder, buildCancellationNotice, buildDecisionNotice } from "@/lib/early-dismissal/format";
 import { approverRolesFor, resolveApproverSlots } from "@/lib/early-dismissal/approvers";
+import { recordEarlyDismissalAttendance, revertEarlyDismissalAttendance } from "@/lib/early-dismissal/attendance";
 import { MAX_COMMENT_LENGTH, overallStatus, type ApproverRole, type EarlyDismissalDecision } from "@/lib/early-dismissal/types";
 
 export const runtime = "nodejs";
@@ -30,6 +31,24 @@ const ROW_SELECT = "id,student_id,parent_id,dismissal_date,dismissal_time,reason
 function studentOf(row: RequestRow) {
   const value = Array.isArray(row.students) ? row.students[0] : row.students;
   return { name: value?.name || "학생", grade: value?.grade || "" };
+}
+
+
+/** Tells the approver what happened to the attendance record, so a skipped or failed write is
+ * visible on the screen rather than only in the server log. */
+function attendanceNote(status: string, sync: { recorded: boolean; reason?: string } | null) {
+  if (!sync) return "";
+  if (sync.recorded) return status === "approved" ? "출석부에 조퇴로 기록했습니다." : "출석부의 조퇴 기록을 되돌렸습니다.";
+  switch (sync.reason) {
+    case "already-early-leave":
+      return "해당 날짜는 이미 조퇴로 기록되어 있습니다.";
+    case "not-early-leave":
+      return "출석부는 이후 따로 수정되어 그대로 두었습니다. 필요하면 출석 관리에서 확인해 주세요.";
+    case "nothing-to-revert":
+      return "";
+    default:
+      return "다만 출석부 자동 기록에 실패했습니다. 출석 관리에서 직접 입력해 주세요.";
+  }
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -124,6 +143,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const nextHomeroom = allowedRoles.includes("homeroom") ? decision : row.homeroom_decision;
   const nextVicePrincipal = allowedRoles.includes("vice_principal") ? decision : row.vice_principal_decision;
   const status = overallStatus(nextHomeroom, nextVicePrincipal);
+
+  // Once both approvals land the day is settled, so it belongs in the attendance record as 조퇴
+  // without anyone re-typing it. Written through the approver's own client so the entry carries a
+  // real author and RLS still applies; a failure is reported, never fatal -- the approval itself
+  // is already committed and must not be rolled back over a bookkeeping write.
+  const attendanceParams = { requestId: id, studentId: row.student_id, studentName: student.name, dismissalDate: row.dismissal_date, authorId: user.id };
+  let attendanceSync = null as Awaited<ReturnType<typeof recordEarlyDismissalAttendance>> | null;
+  if (status === "approved") {
+    attendanceSync = await recordEarlyDismissalAttendance(supabase, { ...attendanceParams, dismissalTime: row.dismissal_time, reason: row.reason });
+  } else if (status === "rejected" && row.status === "approved") {
+    // An approval that is later withdrawn must not leave a 조퇴 standing on the record.
+    attendanceSync = await revertEarlyDismissalAttendance(supabase, attendanceParams);
+  }
   const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
   const deciderName = (profile as any)?.full_name || "선생님";
   // When one account holds both slots (the vice principal is also the G8-G12 homeroom teacher)
@@ -149,13 +181,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   });
 
+  const baseMessage = status === "approved"
+    ? "홈룸 선생님과 교감 선생님의 승인이 모두 완료되어 조퇴가 확정되었습니다."
+    : status === "rejected"
+      ? "조퇴 신청을 반려했습니다. 학부모님께 안내가 전송됩니다."
+      : `${decision === "approved" ? "승인" : "반려"} 처리했습니다. 남은 결재가 완료되면 확정됩니다.`;
+
   return NextResponse.json({
     success: true,
     status,
-    message: status === "approved"
-      ? "홈룸 선생님과 교감 선생님의 승인이 모두 완료되어 조퇴가 확정되었습니다."
-      : status === "rejected"
-        ? "조퇴 신청을 반려했습니다. 학부모님께 안내가 전송됩니다."
-        : `${decision === "approved" ? "승인" : "반려"} 처리했습니다. 남은 결재가 완료되면 확정됩니다.`,
+    attendanceRecorded: attendanceSync?.recorded === true,
+    message: [baseMessage, attendanceNote(status, attendanceSync)].filter(Boolean).join(" "),
   });
 }

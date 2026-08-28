@@ -93,7 +93,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
         <div>
           <p className="eyebrow">EARLY DISMISSAL</p>
           <h2>조퇴 신청</h2>
-          <p className="muted">신청하면 모든 선생님께 알림이 전달되고, 홈룸 선생님과 교감 선생님이 모두 승인해야 확정됩니다.</p>
+          <p className="muted">신청하면 모든 선생님께 알림이 전달되고, 홈룸 선생님과 교감 선생님이 모두 승인해야 확정됩니다. 승인되면 출석부에 조퇴로 기록됩니다.</p>
         </div>
       </div>
 
