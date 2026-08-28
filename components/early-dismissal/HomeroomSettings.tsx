@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 type Assignment = { grade: string; teacherId: string | null; teacherName: string };
+type Officer = { roleKey: string; label: string; profileId: string | null; personName: string };
 type StaffOption = { id: string; fullName: string; email: string };
 
 export default function HomeroomSettings() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [vicePrincipal, setVicePrincipal] = useState<{ profileId: string | null; personName: string }>({ profileId: null, personName: "" });
+  const [officers, setOfficers] = useState<Officer[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -20,7 +21,7 @@ export default function HomeroomSettings() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "홈룸 정보를 불러오지 못했습니다.");
       setAssignments(result.assignments || []);
-      setVicePrincipal(result.vicePrincipal || { profileId: null, personName: "" });
+      setOfficers(result.officers || []);
       setStaff(result.staff || []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "홈룸 정보를 불러오지 못했습니다.");
@@ -70,7 +71,7 @@ export default function HomeroomSettings() {
       <div className="section-heading">
         <div>
           <p className="eyebrow">HOMEROOM</p>
-          <h2>홈룸 · 교감 선생님 지정</h2>
+          <h2>홈룸 · 교장 · 교감 선생님 지정</h2>
           <p className="muted">학년별 홈룸 담당 명단입니다. 조퇴 신청 목록에 학생의 홈룸 선생님이 함께 표시됩니다. 계정을 연결하면 표시 이름이 그 계정의 이름을 따릅니다.</p>
         </div>
         <button type="button" className="secondary" onClick={() => { void load(); }} disabled={loading}>새로고침</button>
@@ -80,19 +81,24 @@ export default function HomeroomSettings() {
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="muted">불러오는 중입니다...</p>}
 
-      <div className="homeroom-row">
-        <strong>교감 선생님</strong>
-        <input
-          value={vicePrincipal.personName}
-          placeholder="이름"
-          disabled={Boolean(vicePrincipal.profileId)}
-          onChange={(event) => setVicePrincipal({ ...vicePrincipal, personName: event.target.value })}
-        />
-        <select value={vicePrincipal.profileId || ""} onChange={(event) => setVicePrincipal({ ...vicePrincipal, profileId: event.target.value || null })}>
-          {staffOptions(vicePrincipal.profileId)}
-        </select>
-        <button type="button" className="secondary" disabled={savingKey === "vice_principal"} onClick={() => save("vice_principal", { target: "vice_principal", teacherId: vicePrincipal.profileId, name: vicePrincipal.personName })}>저장</button>
-      </div>
+      {officers.map((officer) => (
+        <div className="homeroom-row" key={officer.roleKey}>
+          <strong>{officer.label}</strong>
+          <input
+            value={officer.personName}
+            placeholder="이름"
+            disabled={Boolean(officer.profileId)}
+            onChange={(event) => setOfficers((current) => current.map((row) => row.roleKey === officer.roleKey ? { ...row, personName: event.target.value } : row))}
+          />
+          <select
+            value={officer.profileId || ""}
+            onChange={(event) => setOfficers((current) => current.map((row) => row.roleKey === officer.roleKey ? { ...row, profileId: event.target.value || null } : row))}
+          >
+            {staffOptions(officer.profileId)}
+          </select>
+          <button type="button" className="secondary" disabled={savingKey === officer.roleKey} onClick={() => save(officer.roleKey, { target: officer.roleKey, teacherId: officer.profileId, name: officer.personName })}>저장</button>
+        </div>
+      ))}
 
       {assignments.map((assignment) => (
         <div className="homeroom-row" key={assignment.grade}>
