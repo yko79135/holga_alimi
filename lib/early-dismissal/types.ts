@@ -39,3 +39,20 @@ export function requestState(row: { cancelled_at: string | null; attendance_reco
 export const MAX_REASON_LENGTH = 500;
 export const MAX_NAME_LENGTH = 40;
 export const MAX_CONTACT_LENGTH = 40;
+
+/** School-wide offices on the homeroom card, in display order. Display-only: neither designation
+ * grants any permission, so adding an office here is all it takes to show and edit it. */
+export const SCHOOL_OFFICER_ROLES = [
+  { key: "principal", label: "교장 선생님" },
+  { key: "vice_principal", label: "교감 선생님" },
+] as const;
+
+export type SchoolOfficerRoleKey = (typeof SCHOOL_OFFICER_ROLES)[number]["key"];
+
+export function isSchoolOfficerRoleKey(value: unknown): value is SchoolOfficerRoleKey {
+  return SCHOOL_OFFICER_ROLES.some((role) => role.key === value);
+}
+
+export function schoolOfficerLabel(key: SchoolOfficerRoleKey): string {
+  return SCHOOL_OFFICER_ROLES.find((role) => role.key === key)!.label;
+}

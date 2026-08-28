@@ -107,7 +107,7 @@ Do not assume an already installed icon will always refresh automatically.
 
 ## 조퇴 신청
 
-Supabase SQL Editor에서 `supabase/20260828_homeroom_and_early_dismissal.sql`를 먼저 실행하고, 이어서 `supabase/20260829_early_dismissal_no_approval.sql`를 실행하세요. 두 번째 파일이 결재 절차를 걷어내고 출석부 기록 칸을 추가합니다.
+Supabase SQL Editor에서 `supabase/20260828_homeroom_and_early_dismissal.sql`를 먼저 실행하고, 이어서 `supabase/20260829_early_dismissal_no_approval.sql`, `supabase/20260830_principal_designation.sql`를 순서대로 실행하세요. 두 번째 파일이 결재 절차를 걷어내고 출석부 기록 칸을 추가하며, 세 번째 파일이 교장 선생님 지정을 추가합니다.
 
 ### 동작 방식
 
@@ -128,7 +128,7 @@ Supabase SQL Editor에서 `supabase/20260828_homeroom_and_early_dismissal.sql`�
 
 ### 홈룸 배정
 
-관리자 계정의 `계정 관리` 탭에 `홈룸 · 교감 선생님 지정` 카드가 있습니다. 조퇴 신청 목록과 알림에 학생의 홈룸 선생님이 함께 표시됩니다. 결재 권한과는 무관하며, 표시용 명단입니다.
+관리자 계정의 `계정 관리` 탭에 `홈룸 · 교장 · 교감 선생님 지정` 카드가 있습니다. 조퇴 신청 목록과 알림에 학생의 홈룸 선생님이 함께 표시됩니다. 결재 권한과는 무관하며, 표시용 명단입니다.
 
 마이그레이션이 아래 배정을 넣고, 같은 이름의 교사·관리자 계정이 하나만 있으면 자동으로 연결합니다. 계정을 연결하면 표시 이름이 그 계정의 이름을 따릅니다.
 
@@ -141,4 +141,4 @@ Supabase SQL Editor에서 `supabase/20260828_homeroom_and_early_dismissal.sql`�
 | G7 | 송재승 |
 | G8 ~ G12 | 이은총 |
 
-교감 선생님은 이은총 선생님입니다. 새 학년 라벨로 학생을 등록하면 그 학년이 목록에 자동으로 나타납니다.
+교장 선생님은 홍인숙 선생님, 교감 선생님은 이은총 선생님입니다. 새 학년 라벨로 학생을 등록하면 그 학년이 목록에 자동으로 나타납니다.
