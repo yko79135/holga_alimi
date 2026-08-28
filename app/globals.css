@@ -2289,3 +2289,91 @@ h3 {
     display: none;
   }
 }
+
+/* Early dismissal (조퇴) requests and homeroom settings */
+.early-dismissal-row {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+}
+.early-dismissal-row.highlight {
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 2px rgba(90, 150, 210, 0.25);
+}
+.early-dismissal-row header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.early-dismissal-row p {
+  margin: 0;
+}
+.tag.early-dismissal-pending {
+  background: var(--sand-100);
+  color: var(--teal-700);
+}
+.tag.early-dismissal-approved {
+  background: var(--mint-100);
+  color: var(--success);
+}
+.tag.early-dismissal-rejected {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.tag.early-dismissal-cancelled {
+  background: var(--sand-100);
+  color: var(--muted);
+}
+.early-dismissal-approvals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.early-dismissal-approvals dt {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.early-dismissal-approvals dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.early-dismissal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.early-dismissal-actions input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.homeroom-row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.homeroom-row:last-child {
+  border-bottom: none;
+}
+@media (max-width: 760px) {
+  .homeroom-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .homeroom-row strong {
+    grid-column: 1 / -1;
+  }
+  .early-dismissal-actions input {
+    flex-basis: 100%;
+  }
+}

@@ -1,4 +1,4 @@
-export type SafePushPayload = { title: string; body: string; noticeId: string; url: string; category: "general" | "individual" | "staff" };
+export type SafePushPayload = { title: string; body: string; noticeId: string; url: string; category: "general" | "individual" | "staff" | "early_dismissal" };
 
 const BODY_PREVIEW_LENGTH = 120;
 
@@ -39,5 +39,20 @@ export function buildReplyPushPayload(notice: { id: string; title: string }, par
     noticeId: notice.id,
     url: `/dashboard?view=staff&tab=notices&notice=${encodeURIComponent(notice.id)}`,
     category: "staff",
+  };
+}
+
+/** Early dismissal (조퇴) pushes carry the request id rather than a notice id: the service worker
+ * only uses it as the notification `tag`, and a per-request tag is what keeps the submission,
+ * each approval, and the final result from silently overwriting one another on the device. */
+export function buildEarlyDismissalPayload(requestId: string, content: { title: string; body: string }, audience: "staff" | "parent"): SafePushPayload {
+  return {
+    title: content.title,
+    body: previewBody(content.body, 160),
+    noticeId: `early-dismissal:${requestId}`,
+    url: audience === "staff"
+      ? `/dashboard?view=staff&tab=early-dismissal&request=${encodeURIComponent(requestId)}`
+      : `/dashboard?view=parent&tab=early-dismissal&request=${encodeURIComponent(requestId)}`,
+    category: "early_dismissal",
   };
 }

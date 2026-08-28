@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compareGrades } from "@/lib/grade-sort";
+import HomeroomSettings from "@/components/early-dismissal/HomeroomSettings";
 
 type Role = "admin" | "teacher" | "parent";
 type Status = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
@@ -473,6 +474,8 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
           {!invites.length && <div className="empty-state">생성된 초대 링크가 없습니다.</div>}
         </div>
       </section>
+
+      <HomeroomSettings />
 
       <section className="content-card">
         <div className="section-heading">
