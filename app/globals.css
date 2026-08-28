@@ -2313,17 +2313,13 @@ h3 {
 .early-dismissal-row p {
   margin: 0;
 }
-.tag.early-dismissal-pending {
+.tag.early-dismissal-submitted {
   background: var(--sand-100);
   color: var(--teal-700);
 }
-.tag.early-dismissal-approved {
+.tag.early-dismissal-recorded {
   background: var(--mint-100);
   color: var(--success);
-}
-.tag.early-dismissal-rejected {
-  background: var(--danger-soft);
-  color: var(--danger);
 }
 .tag.early-dismissal-cancelled {
   background: var(--sand-100);

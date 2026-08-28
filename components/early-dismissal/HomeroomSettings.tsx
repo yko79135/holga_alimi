@@ -54,6 +54,7 @@ export default function HomeroomSettings() {
 
   // The teacher's name is stored alongside the link so the roster still reads correctly before a
   // teacher has a portal account; linking an account overwrites it with that account's own name.
+  // The link no longer carries any permission -- it only keeps the displayed name in sync.
   function staffOptions(selectedId: string | null) {
     return (
       <>
@@ -70,7 +71,7 @@ export default function HomeroomSettings() {
         <div>
           <p className="eyebrow">HOMEROOM</p>
           <h2>홈룸 · 교감 선생님 지정</h2>
-          <p className="muted">조퇴 신청은 학생 학년의 홈룸 선생님과 교감 선생님이 모두 승인해야 확정됩니다. 계정을 연결하면 그 선생님만 결재할 수 있습니다.</p>
+          <p className="muted">학년별 홈룸 담당 명단입니다. 조퇴 신청 목록에 학생의 홈룸 선생님이 함께 표시됩니다. 계정을 연결하면 표시 이름이 그 계정의 이름을 따릅니다.</p>
         </div>
         <button type="button" className="secondary" onClick={() => { void load(); }} disabled={loading}>새로고침</button>
       </div>

@@ -41,9 +41,9 @@ async function dayEntries(supabase: SupabaseClient, studentId: string, date: str
 }
 
 /** attendance_change_batches.idempotency_key is unique, so the key doubles as the lock against a
- * double-clicked approval. It carries a cycle number because one request can legitimately be
- * approved, withdrawn, and approved again, each needing its own batch. */
-async function nextKey(supabase: SupabaseClient, requestId: string, action: "approved" | "reverted") {
+ * double-clicked button. It carries a cycle number because one request can legitimately be
+ * recorded, undone, and recorded again, each needing its own batch. */
+async function nextKey(supabase: SupabaseClient, requestId: string, action: "recorded" | "reverted") {
   const { count } = await supabase
     .from("attendance_change_batches")
     .select("id", { count: "exact", head: true })
@@ -84,23 +84,23 @@ async function writeEntry(
   if (entryRes.error || !entryRes.data) throw entryRes.error || new Error("entry insert returned no row");
 }
 
-/** Writes 조퇴 into the attendance record once both approvals land. Never throws: the approval is
- * already committed and must not be rolled back over a bookkeeping write, so a failure is
- * reported back for the caller to surface and the teacher can still record the day by hand. */
+/** Writes 조퇴 into the attendance record when a teacher records the request. Never throws: a
+ * failure is reported back for the caller to surface so the teacher can still enter the day by
+ * hand in 출석 관리. */
 export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, params: Params): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
   try {
     const entries = await dayEntries(supabase, params.studentId, params.dismissalDate, term.academicYear, term.semester);
     const previousStatus = currentStatus(latestStatusByStudentDate(entries), params.studentId, params.dismissalDate);
     // attendance_entries requires previous_status to differ from new_status, and a day already
-    // marked 조퇴 -- by a teacher, or by this same approval -- needs no second row.
+    // marked 조퇴 -- by a teacher directly, or by this same request -- needs no second row.
     if (previousStatus === "early_leave") return { recorded: false, reason: "already-early-leave" };
 
     const clock = formatDismissalTime(params.dismissalTime);
     const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus, newStatus: "early_leave" });
-    const detail = [clock ? `${clock} 조퇴` : null, `학부모 조퇴 신청 승인 (사유: ${params.reason})`].filter(Boolean).join(" · ");
+    const detail = [clock ? `${clock} 조퇴` : null, `학부모 조퇴 신청 (사유: ${params.reason})`].filter(Boolean).join(" · ");
 
-    await writeEntry(supabase, await nextKey(supabase, params.requestId, "approved"), term, {
+    await writeEntry(supabase, await nextKey(supabase, params.requestId, "recorded"), term, {
       studentId: params.studentId,
       date: params.dismissalDate,
       previousStatus,
@@ -116,10 +116,9 @@ export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, p
   }
 }
 
-/** Undoes the auto-record when an already-approved request is later rejected. The attendance log
- * is append-only, so this writes a correction entry back to whatever the day held before the
- * approval -- and only while the day still reads 조퇴, so a teacher's own later edit is never
- * overwritten. */
+/** Undoes a record a teacher entered by mistake. The attendance log is append-only, so this
+ * writes a correction entry back to whatever the day held before -- and only while the day still
+ * reads 조퇴, so a later edit by someone else is never overwritten. */
 export async function revertEarlyDismissalAttendance(supabase: SupabaseClient, params: Omit<Params, "reason" | "dismissalTime">): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
   try {
@@ -139,7 +138,7 @@ export async function revertEarlyDismissalAttendance(supabase: SupabaseClient, p
       date: params.dismissalDate,
       previousStatus: "early_leave",
       newStatus: restored,
-      reason: `${template}조퇴 승인이 취소되었습니다.`,
+      reason: `${template}조퇴 기록이 취소되었습니다.`,
       authorId: params.authorId,
     });
     return { recorded: true };
