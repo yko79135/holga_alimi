@@ -9,6 +9,7 @@ import { noticeTypeLabel } from "@/lib/notices";
 import ParentAttendanceStats from "@/components/parent/AttendanceStats";
 import ParentPointStats from "@/components/parent/PointStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
+import ParentEarlyDismissalRequests from "@/components/parent/EarlyDismissalRequests";
 
 const NOTICES_PER_PAGE = 10;
 
@@ -55,7 +56,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [noticePage, setNoticePage] = useState(1);
-  const [tab, setTab] = useState<"notices" | "attendance-stats" | "point-stats" | "academic-calendar">("notices");
+  const [tab, setTab] = useState<"notices" | "early-dismissal" | "attendance-stats" | "point-stats" | "academic-calendar">(() => searchParams.get("tab") === "early-dismissal" ? "early-dismissal" : "notices");
   const [message, setMessage] = useState("");
 
   const requestIdRef = useRef(0);
@@ -283,11 +284,13 @@ export default function ParentDashboard({ userId }: { userId: string }) {
         <main className="parent-main-column">
           <nav className="staff-tabs">
             <button className={tab === "notices" ? "active" : ""} onClick={() => setTab("notices")}>학교 알림</button>
+            <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => setTab("early-dismissal")}>조퇴 신청</button>
             <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
             <button className={tab === "point-stats" ? "active" : ""} onClick={() => setTab("point-stats")}>점수 통계</button>
             <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => setTab("academic-calendar")}>학사일정</button>
           </nav>
 
+          {tab === "early-dismissal" && <ParentEarlyDismissalRequests userId={userId} students={students} />}
           {tab === "attendance-stats" && <ParentAttendanceStats />}
           {tab === "point-stats" && <ParentPointStats />}
           {tab === "academic-calendar" && <AcademicCalendarUpload canEdit={false} />}

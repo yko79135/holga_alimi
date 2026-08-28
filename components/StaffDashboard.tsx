@@ -11,6 +11,7 @@ import PointStats from "@/components/warnings/PointStats";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
 import AttendanceStats from "@/components/attendance/AttendanceStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
+import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalManager";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 import { compareGrades, sortGrades } from "@/lib/grade-sort";
 import { COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
@@ -385,6 +386,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         {role === "admin" && <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>}
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
+        <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => onTabChange("early-dismissal")}>조퇴 결재</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
@@ -507,6 +509,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         </div>
       )}
 
+      {tab === "early-dismissal" && <EarlyDismissalManager userId={userId} />}
       {tab === "attendance" && <AttendanceManager role={role} />}
 
       {tab === "attendance-stats" && <AttendanceStats role={role} />}
