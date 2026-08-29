@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compareGrades } from "@/lib/grade-sort";
 import HomeroomSettings from "@/components/early-dismissal/HomeroomSettings";
-import { SEMESTER_LABELS, SEMESTERS, resetRecordsConfirmPhrase } from "@/lib/semester";
+import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester, resetRecordsConfirmPhrase } from "@/lib/semester";
 
 type Role = "admin" | "teacher" | "parent";
 type Status = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
@@ -78,7 +78,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback | null>(null);
   const [resetRecordsOpen, setResetRecordsOpen] = useState(false);
   const [resetRecordsYear, setResetRecordsYear] = useState(new Date().getFullYear());
-  const [resetRecordsSemester, setResetRecordsSemester] = useState(new Date().getMonth() < 7 ? 1 : 2);
+  const [resetRecordsSemester, setResetRecordsSemester] = useState<number>(defaultSemester());
   const [resetRecordsConfirm, setResetRecordsConfirm] = useState("");
   const [resetRecordsSubmitting, setResetRecordsSubmitting] = useState(false);
   const [resetRecordsFeedback, setResetRecordsFeedback] = useState<Feedback | null>(null);
@@ -499,7 +499,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         <p className="muted">선택한 학년도·학기의 훈계·칭찬 점수와 출결 기록, 그리고 그로부터 생성된 학부모 알림을 모두 영구 삭제합니다. 학생·계정·공지문 등 다른 데이터는 영향받지 않습니다. 삭제 전 위의 데이터 백업을 먼저 받아두는 것을 권장합니다.</p>
         <div className="two-columns">
           <label>학년도<input type="number" value={resetRecordsYear} onChange={(e) => setResetRecordsYear(Number(e.target.value))} /></label>
-          <label>학기<select value={resetRecordsSemester} onChange={(e) => setResetRecordsSemester(Number(e.target.value))}>{SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
+          <label>학기<select value={resetRecordsSemester} onChange={(e) => setResetRecordsSemester(Number(e.target.value))}>{SELECTABLE_SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
         </div>
         <button type="button" className="danger-button" onClick={() => setResetRecordsOpen(true)}>이 학기 기록 초기화</button>
       </section>

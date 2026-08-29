@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { ATTENDANCE_EXCEPTION_STATUSES, ATTENDANCE_STATUS_LABELS, type AttendanceExceptionStatus } from "@/lib/attendance/types";
-import { SEMESTER_LABELS, SEMESTERS } from "@/lib/semester";
+import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester } from "@/lib/semester";
 
 type StatsStudent = {
   id: string;
@@ -18,7 +18,7 @@ const now = new Date();
 
 export default function ParentAttendanceStats() {
   const [year, setYear] = useState(now.getFullYear());
-  const [semester, setSemester] = useState(now.getMonth() < 7 ? 1 : 2);
+  const [semester, setSemester] = useState<number>(defaultSemester());
   const [rows, setRows] = useState<StatsStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -53,7 +53,7 @@ export default function ParentAttendanceStats() {
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
-        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
+        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SELECTABLE_SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
       </div>
 
       {err && <p className="form-error">{err}</p>}
