@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resetRecordsConfirmPhrase, semesterLabel } from "@/lib/semester";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (!Number.isInteger(academicYear) || academicYear < 2000 || ![1, 2].includes(semester)) {
     return NextResponse.json({ error: "학년도와 학기를 확인해 주세요." }, { status: 400 });
   }
-  const expectedConfirm = `${academicYear}년 ${semester}학기 삭제`;
+  const expectedConfirm = resetRecordsConfirmPhrase(academicYear, semester);
   if (confirmText !== expectedConfirm) {
     return NextResponse.json({ error: `확인 문구가 일치하지 않습니다. "${expectedConfirm}"를 정확히 입력해 주세요.` }, { status: 400 });
   }
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     success: true,
-    message: `${academicYear}년 ${semester}학기의 훈계·칭찬·출석 기록을 모두 삭제했습니다. (훈계·칭찬 ${warningEntriesRes.data?.length || 0}건, 출석 ${attendanceEntriesRes.data?.length || 0}건, 관련 알림 ${noticeIdList.length}건)`,
+    message: `${academicYear}년 ${semesterLabel(semester)}의 훈계·칭찬·출석 기록을 모두 삭제했습니다. (훈계·칭찬 ${warningEntriesRes.data?.length || 0}건, 출석 ${attendanceEntriesRes.data?.length || 0}건, 관련 알림 ${noticeIdList.length}건)`,
     deletedWarningEntries: warningEntriesRes.data?.length || 0,
     deletedAttendanceEntries: attendanceEntriesRes.data?.length || 0,
     deletedNotices: noticeIdList.length,

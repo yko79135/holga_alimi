@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compareGrades } from "@/lib/grade-sort";
 import HomeroomSettings from "@/components/early-dismissal/HomeroomSettings";
+import { SEMESTER_LABELS, SEMESTERS, resetRecordsConfirmPhrase } from "@/lib/semester";
 
 type Role = "admin" | "teacher" | "parent";
 type Status = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
@@ -273,7 +274,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     }
   }
 
-  const resetRecordsConfirmText = `${resetRecordsYear}년 ${resetRecordsSemester}학기 삭제`;
+  const resetRecordsConfirmText = resetRecordsConfirmPhrase(resetRecordsYear, resetRecordsSemester);
 
   function closeResetRecords() {
     if (resetRecordsSubmitting) return;
@@ -498,7 +499,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         <p className="muted">선택한 학년도·학기의 훈계·칭찬 점수와 출결 기록, 그리고 그로부터 생성된 학부모 알림을 모두 영구 삭제합니다. 학생·계정·공지문 등 다른 데이터는 영향받지 않습니다. 삭제 전 위의 데이터 백업을 먼저 받아두는 것을 권장합니다.</p>
         <div className="two-columns">
           <label>학년도<input type="number" value={resetRecordsYear} onChange={(e) => setResetRecordsYear(Number(e.target.value))} /></label>
-          <label>학기<select value={resetRecordsSemester} onChange={(e) => setResetRecordsSemester(Number(e.target.value))}><option value={1}>1학기</option><option value={2}>2학기</option></select></label>
+          <label>학기<select value={resetRecordsSemester} onChange={(e) => setResetRecordsSemester(Number(e.target.value))}>{SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
         </div>
         <button type="button" className="danger-button" onClick={() => setResetRecordsOpen(true)}>이 학기 기록 초기화</button>
       </section>
@@ -528,7 +529,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             <p className="eyebrow">PERMANENT DELETE</p>
             <h2 id="reset-records-title">기록 초기화</h2>
             <dl className="reset-target-details">
-              <div><dt>학년도</dt><dd>{resetRecordsYear}년</dd></div><div><dt>학기</dt><dd>{resetRecordsSemester}학기</dd></div>
+              <div><dt>학년도</dt><dd>{resetRecordsYear}년</dd></div><div><dt>학기</dt><dd>{SEMESTER_LABELS[resetRecordsSemester === 1 ? 1 : 2]}</dd></div>
             </dl>
             <p className="destructive-warning">이 작업은 되돌릴 수 없습니다. 해당 학기의 훈계·칭찬 점수, 출결 기록, 그리고 그로부터 생성된 학부모 알림이 전부 영구 삭제됩니다.</p>
             <label htmlFor="reset-records-confirm">계속하려면 &ldquo;{resetRecordsConfirmText}&rdquo;를 정확히 입력하세요.</label>
