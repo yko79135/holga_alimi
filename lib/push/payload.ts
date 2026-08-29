@@ -42,9 +42,9 @@ export function buildReplyPushPayload(notice: { id: string; title: string }, par
   };
 }
 
-/** Early dismissal (조퇴) pushes carry the request id rather than a notice id: the service worker
- * only uses it as the notification `tag`, and a per-request tag is what keeps the submission,
- * each approval, and the final result from silently overwriting one another on the device. */
+/** Early dismissal (조퇴) and absence (결석) pushes carry the request id rather than a notice id:
+ * the service worker only uses it as the notification `tag`, and a per-request tag is what keeps
+ * the submission and any later cancellation from silently overwriting one another on the device. */
 export function buildEarlyDismissalPayload(requestId: string, content: { title: string; body: string }, audience: "staff" | "parent"): SafePushPayload {
   return {
     title: content.title,

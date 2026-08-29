@@ -4,17 +4,20 @@ import { attendanceChangeType } from "@/lib/attendance/format";
 import { currentStatus, latestStatusByStudentDate } from "@/lib/attendance/aggregate";
 import { buildAttendanceReasonTemplate } from "@/lib/attendance/reasons";
 import { termForDate } from "@/lib/warnings/term";
-import type { AttendanceStatus } from "@/lib/attendance/types";
+import { ATTENDANCE_STATUS_LABELS, type AttendanceStatus } from "@/lib/attendance/types";
+import { REQUEST_TYPE_ATTENDANCE_STATUS, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "./types";
 import { formatDismissalTime } from "./format";
 
 export type AttendanceSyncResult =
   | { recorded: true }
-  | { recorded: false; reason: "already-early-leave" | "not-early-leave" | "nothing-to-revert" | "failed" };
+  | { recorded: false; reason: "already-recorded" | "status-changed" | "nothing-to-revert" | "failed" };
 
 type Params = {
   requestId: string;
   studentId: string;
   studentName: string;
+  /** Decides which status the day is written as: 조퇴 -> early_leave, 결석 -> absent. */
+  type: EarlyDismissalRequestType;
   dismissalDate: string;
   dismissalTime: string | null;
   reason: string;
@@ -84,33 +87,36 @@ async function writeEntry(
   if (entryRes.error || !entryRes.data) throw entryRes.error || new Error("entry insert returned no row");
 }
 
-/** Writes 조퇴 into the attendance record when a teacher records the request. Never throws: a
- * failure is reported back for the caller to surface so the teacher can still enter the day by
- * hand in 출석 관리. */
+/** Writes 조퇴 or 결석 into the attendance record when a teacher records the request. Never
+ * throws: a failure is reported back for the caller to surface so the teacher can still enter the
+ * day by hand in 출석 관리. */
 export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, params: Params): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
+  const newStatus = REQUEST_TYPE_ATTENDANCE_STATUS[params.type];
+  const label = requestTypeLabel(params.type);
   try {
     const entries = await dayEntries(supabase, params.studentId, params.dismissalDate, term.academicYear, term.semester);
     const previousStatus = currentStatus(latestStatusByStudentDate(entries), params.studentId, params.dismissalDate);
     // attendance_entries requires previous_status to differ from new_status, and a day already
-    // marked 조퇴 -- by a teacher directly, or by this same request -- needs no second row.
-    if (previousStatus === "early_leave") return { recorded: false, reason: "already-early-leave" };
+    // marked with that status -- by a teacher directly, or by this same request -- needs no
+    // second row.
+    if (previousStatus === newStatus) return { recorded: false, reason: "already-recorded" };
 
-    const clock = formatDismissalTime(params.dismissalTime);
-    const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus, newStatus: "early_leave" });
-    const detail = [clock ? `${clock} 조퇴` : null, `학부모 조퇴 신청 (사유: ${params.reason})`].filter(Boolean).join(" · ");
+    const clock = usesDismissalTime(params.type) ? formatDismissalTime(params.dismissalTime) : null;
+    const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus, newStatus });
+    const detail = [clock ? `${clock} ${label}` : null, `학부모 ${label} 신청 (사유: ${params.reason})`].filter(Boolean).join(" · ");
 
     await writeEntry(supabase, await nextKey(supabase, params.requestId, "recorded"), term, {
       studentId: params.studentId,
       date: params.dismissalDate,
       previousStatus,
-      newStatus: "early_leave",
+      newStatus,
       reason: `${template}${detail}`,
       authorId: params.authorId,
     });
     return { recorded: true };
   } catch (error) {
-    if (isUniqueViolation(error)) return { recorded: false, reason: "already-early-leave" };
+    if (isUniqueViolation(error)) return { recorded: false, reason: "already-recorded" };
     console.error("early-dismissal-attendance-record-failed", { requestId: params.requestId, message: error instanceof Error ? error.message : "unknown" });
     return { recorded: false, reason: "failed" };
   }
@@ -118,27 +124,28 @@ export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, p
 
 /** Undoes a record a teacher entered by mistake. The attendance log is append-only, so this
  * writes a correction entry back to whatever the day held before -- and only while the day still
- * reads 조퇴, so a later edit by someone else is never overwritten. */
+ * reads the status this request wrote, so a later edit by someone else is never overwritten. */
 export async function revertEarlyDismissalAttendance(supabase: SupabaseClient, params: Omit<Params, "reason" | "dismissalTime">): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
+  const recordedStatus = REQUEST_TYPE_ATTENDANCE_STATUS[params.type];
   try {
     const entries = await dayEntries(supabase, params.studentId, params.dismissalDate, term.academicYear, term.semester);
     if (!entries.length) return { recorded: false, reason: "nothing-to-revert" };
     const current = currentStatus(latestStatusByStudentDate(entries), params.studentId, params.dismissalDate);
-    // Someone corrected the day after the approval -- leave their edit alone.
-    if (current !== "early_leave") return { recorded: false, reason: "not-early-leave" };
+    // Someone corrected the day after it was recorded -- leave their edit alone.
+    if (current !== recordedStatus) return { recorded: false, reason: "status-changed" };
 
-    // Restore what the day held before 조퇴 was written, rather than a blanket 출석.
-    const restored = (entries.find((entry) => entry.new_status === "early_leave")?.previous_status || "present") as AttendanceStatus;
-    if (restored === "early_leave") return { recorded: false, reason: "nothing-to-revert" };
+    // Restore what the day held before the request was written, rather than a blanket 출석.
+    const restored = (entries.find((entry) => entry.new_status === recordedStatus)?.previous_status || "present") as AttendanceStatus;
+    if (restored === recordedStatus) return { recorded: false, reason: "nothing-to-revert" };
 
-    const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus: "early_leave", newStatus: restored });
+    const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus: recordedStatus, newStatus: restored });
     await writeEntry(supabase, await nextKey(supabase, params.requestId, "reverted"), term, {
       studentId: params.studentId,
       date: params.dismissalDate,
-      previousStatus: "early_leave",
+      previousStatus: recordedStatus,
       newStatus: restored,
-      reason: `${template}조퇴 기록이 취소되었습니다.`,
+      reason: `${template}${ATTENDANCE_STATUS_LABELS[recordedStatus]} 기록이 취소되었습니다.`,
       authorId: params.authorId,
     });
     return { recorded: true };

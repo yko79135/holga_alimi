@@ -3,8 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles } from "@/lib/roles-server";
 import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
-import { buildCancellationNotice } from "@/lib/early-dismissal/format";
+import { buildCancellationNotice, withMeansParticle } from "@/lib/early-dismissal/format";
 import { recordEarlyDismissalAttendance, revertEarlyDismissalAttendance } from "@/lib/early-dismissal/attendance";
+import { isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ type RequestRow = {
   id: string;
   student_id: string;
   parent_id: string;
+  request_type: string | null;
   dismissal_date: string;
   dismissal_time: string | null;
   reason: string;
@@ -23,7 +25,7 @@ type RequestRow = {
   students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null;
 };
 
-const ROW_SELECT = "id,student_id,parent_id,dismissal_date,dismissal_time,reason,guardian_name,returns_same_day,cancelled_at,attendance_recorded_at,students(name,grade)";
+const ROW_SELECT = "id,student_id,parent_id,request_type,dismissal_date,dismissal_time,reason,guardian_name,returns_same_day,cancelled_at,attendance_recorded_at,students(name,grade)";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,11 +45,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // The caller's own client reads the row, so RLS decides whether they may see it at all.
   const rowRes = await supabase.from("early_dismissal_requests").select(ROW_SELECT).eq("id", id).maybeSingle<RequestRow>();
-  if (rowRes.error || !rowRes.data) return NextResponse.json({ error: "조퇴 신청을 찾을 수 없습니다." }, { status: 404 });
+  if (rowRes.error || !rowRes.data) return NextResponse.json({ error: "신청 내역을 찾을 수 없습니다." }, { status: 404 });
   const row = rowRes.data;
+  // Rows written before 결석 신청 existed carry no request_type; they were all 조퇴.
+  const requestType: EarlyDismissalRequestType = isRequestType(row.request_type) ? row.request_type : "early_dismissal";
+  const typeLabel = requestTypeLabel(requestType);
   const studentValue = Array.isArray(row.students) ? row.students[0] : row.students;
   const student = { name: studentValue?.name || "학생", grade: studentValue?.grade || "" };
-  const summary = { studentName: student.name, studentGrade: student.grade, dismissalDate: row.dismissal_date, dismissalTime: row.dismissal_time, reason: row.reason, guardianName: row.guardian_name, returnsSameDay: row.returns_same_day };
+  const summary = { type: requestType, studentName: student.name, studentGrade: student.grade, dismissalDate: row.dismissal_date, dismissalTime: row.dismissal_time, reason: row.reason, guardianName: row.guardian_name, returnsSameDay: row.returns_same_day };
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
@@ -59,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { error } = await admin.from("early_dismissal_requests").update({ cancelled_at: now, updated_at: now }).eq("id", id).is("cancelled_at", null);
     if (error) {
       console.error("early-dismissal-cancel-failed", { id, code: error.code, message: error.message });
-      return NextResponse.json({ error: "조퇴 신청을 취소하지 못했습니다." }, { status: 500 });
+      return NextResponse.json({ error: `${typeLabel} 신청을 취소하지 못했습니다.` }, { status: 500 });
     }
     const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
     after(async () => {
@@ -69,7 +74,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         console.error("early-dismissal-cancel-notify-failed", { id, message: error instanceof Error ? error.message : "unknown" });
       }
     });
-    return NextResponse.json({ success: true, message: "조퇴 신청을 취소했습니다." });
+    return NextResponse.json({ success: true, message: `${typeLabel} 신청을 취소했습니다.` });
   }
 
   if (!isStaff) return NextResponse.json({ error: "교사 또는 관리자 권한이 필요합니다." }, { status: 403 });
@@ -84,7 +89,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // Any teacher can put the request on the attendance sheet -- there is no approver any more, so
-  // whoever handles the student that day records it. The attendance write itself goes through the
+  // whoever handles the student that day records it. The request's own kind decides whether the
+  // day is written as 조퇴 or 결석. The attendance write itself goes through the
   // teacher's own client, so attendance_entries' RLS still applies and the entry has a real author.
   if (action === "record") {
     if (row.cancelled_at) return NextResponse.json({ error: "취소된 신청입니다." }, { status: 409 });
@@ -94,8 +100,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       requestId: id,
       studentId: row.student_id,
       studentName: student.name,
+      type: requestType,
       dismissalDate: row.dismissal_date,
-      dismissalTime: row.dismissal_time,
+      dismissalTime: usesDismissalTime(requestType) ? row.dismissal_time : null,
       reason: row.reason,
       authorId: user.id,
     });
@@ -122,13 +129,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({
       success: true,
       message: sync.recorded
-        ? "출석부에 조퇴로 기록했습니다."
-        : "해당 날짜는 이미 조퇴로 기록되어 있어 출석부는 그대로 두었습니다.",
+        ? `출석부에 ${withMeansParticle(typeLabel)} 기록했습니다.`
+        : `해당 날짜는 이미 ${withMeansParticle(typeLabel)} 기록되어 있어 출석부는 그대로 두었습니다.`,
     });
   }
 
   // Undo a mistaken record: the attendance log is append-only, so this writes a correction back
-  // to whatever the day held before, and only while it still reads 조퇴.
+  // to whatever the day held before, and only while it still reads what this request wrote.
   if (action === "unrecord") {
     if (!row.attendance_recorded_at) return NextResponse.json({ error: "아직 출석부에 기록되지 않은 신청입니다." }, { status: 409 });
 
@@ -136,6 +143,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       requestId: id,
       studentId: row.student_id,
       studentName: student.name,
+      type: requestType,
       dismissalDate: row.dismissal_date,
       authorId: user.id,
     });
@@ -152,7 +160,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({
       success: true,
       message: sync.recorded
-        ? "출석부의 조퇴 기록을 되돌렸습니다."
+        ? `출석부의 ${typeLabel} 기록을 되돌렸습니다.`
         : "출석부는 이후 따로 수정되어 그대로 두고, 신청의 기록 표시만 해제했습니다.",
     });
   }

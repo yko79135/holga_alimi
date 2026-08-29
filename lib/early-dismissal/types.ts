@@ -1,3 +1,5 @@
+import type { AttendanceStatus } from "@/lib/attendance/types";
+
 /** A request is open until the parent withdraws it. There is no approval step: submitting
  * notifies every teacher, and a teacher records it on the attendance sheet when appropriate. */
 export type EarlyDismissalState = "submitted" | "recorded" | "cancelled";
@@ -8,6 +10,36 @@ export const STATE_LABELS: Record<EarlyDismissalState, string> = {
   cancelled: "취소됨",
 };
 
+/** A parent asks for one of two things on a given day. They share one form, one notification
+ * path, and one attendance write; only the label and the status a teacher records differ. */
+export type EarlyDismissalRequestType = "early_dismissal" | "absence";
+
+export const REQUEST_TYPES: EarlyDismissalRequestType[] = ["early_dismissal", "absence"];
+
+export const REQUEST_TYPE_LABELS: Record<EarlyDismissalRequestType, string> = {
+  early_dismissal: "조퇴",
+  absence: "결석",
+};
+
+/** The attendance status each kind is written as when a teacher records it. */
+export const REQUEST_TYPE_ATTENDANCE_STATUS: Record<EarlyDismissalRequestType, AttendanceStatus> = {
+  early_dismissal: "early_leave",
+  absence: "absent",
+};
+
+/** A leaving time and a same-day return only mean something when the child is at school first. */
+export function usesDismissalTime(type: EarlyDismissalRequestType) {
+  return type === "early_dismissal";
+}
+
+export function isRequestType(value: unknown): value is EarlyDismissalRequestType {
+  return REQUEST_TYPES.includes(value as EarlyDismissalRequestType);
+}
+
+export function requestTypeLabel(type: EarlyDismissalRequestType) {
+  return REQUEST_TYPE_LABELS[type];
+}
+
 export type EarlyDismissalRequest = {
   id: string;
   studentId: string;
@@ -15,6 +47,7 @@ export type EarlyDismissalRequest = {
   studentGrade: string;
   parentId: string;
   parentName: string;
+  type: EarlyDismissalRequestType;
   dismissalDate: string;
   dismissalTime: string | null;
   reason: string;

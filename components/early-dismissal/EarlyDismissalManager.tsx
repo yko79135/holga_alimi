@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment } from "@/lib/early-dismissal/format";
 import { compareGrades } from "@/lib/grade-sort";
-import { STATE_LABELS, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
+import { REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 
 type Filter = "open" | "unrecorded" | "all";
 
@@ -23,10 +23,10 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
     try {
       const response = await fetch("/api/early-dismissal", { cache: "no-store" });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "조퇴 신청 목록을 불러오지 못했습니다.");
+      if (!response.ok) throw new Error(result.error || "신청 목록을 불러오지 못했습니다.");
       setRequests(result.requests || []);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "조퇴 신청 목록을 불러오지 못했습니다.");
+      setError(loadError instanceof Error ? loadError.message : "신청 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -80,8 +80,8 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">EARLY DISMISSAL</p>
-          <h2>조퇴 신청</h2>
-          <p className="muted">학부모가 제출한 조퇴 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 출석부에 조퇴로 기록해 주세요.</p>
+          <h2>조퇴 · 결석 신청</h2>
+          <p className="muted">학부모가 제출한 조퇴·결석 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 신청한 종류대로 출석부에 기록해 주세요.</p>
         </div>
         <span className="pill">출석부 미기록 {unrecordedCount}건</span>
       </div>
@@ -102,15 +102,16 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
           return (
             <article className={`early-dismissal-row ${highlightId === request.id ? "highlight" : ""}`} key={request.id}>
               <header>
+                <span className={`tag request-type-${request.type}`}>{REQUEST_TYPE_LABELS[request.type]}</span>
                 <span className={`tag early-dismissal-${request.state}`}>{STATE_LABELS[request.state]}</span>
-                <strong>{request.studentGrade} {request.studentName} · {formatDismissalMoment(request.dismissalDate, request.dismissalTime)}</strong>
+                <strong>{request.studentGrade} {request.studentName} · {formatDismissalMoment(request.dismissalDate, usesDismissalTime(request.type) ? request.dismissalTime : null)}</strong>
               </header>
               <p className="muted">신청: {request.parentName} · {new Date(request.createdAt).toLocaleString("ko-KR")} · 홈룸 {request.homeroomTeacherName}</p>
               <p className="notice-body">{request.reason}</p>
               <p className="muted">
                 {request.guardianName ? `인솔자 ${request.guardianName}` : "인솔자 미기재"}
                 {request.guardianContact ? ` · ${request.guardianContact}` : ""}
-                {request.returnsSameDay ? " · 당일 복귀 예정" : ""}
+                {usesDismissalTime(request.type) && request.returnsSameDay ? " · 당일 복귀 예정" : ""}
               </p>
 
               {request.attendanceRecordedAt && (
@@ -125,7 +126,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
                   {acknowledgedByMe(request) ? "확인함" : "확인"}
                 </button>
                 {request.state === "submitted" && (
-                  <button type="button" className="primary" disabled={busy} onClick={() => act(request, { action: "record" })}>출석부에 조퇴 기록</button>
+                  <button type="button" className="primary" disabled={busy} onClick={() => act(request, { action: "record" })}>출석부에 {REQUEST_TYPE_LABELS[request.type]} 기록</button>
                 )}
                 {request.state === "recorded" && (
                   <button type="button" className="danger-outline-button" disabled={busy} onClick={() => act(request, { action: "unrecord" })}>기록 취소</button>
@@ -134,7 +135,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
             </article>
           );
         })}
-        {!loading && !visible.length && <div className="empty-state">해당하는 조퇴 신청이 없습니다.</div>}
+        {!loading && !visible.length && <div className="empty-state">해당하는 신청이 없습니다.</div>}
       </div>
     </section>
   );
