@@ -1,4 +1,5 @@
-/** Semester split used across the point ledger: 1~7월 is 1학기, 8~12월 is 2학기 -- the same rule
+/** Semester split used across the point ledger: 1~7월 is semester 1 (봄학기), 8~12월 is
+ * semester 2 (가을학기) -- the stored number never changes, only its label (lib/semester.ts). Same rule
  * the grant/stats screens apply to "today" (see app/api/warnings/grant/route.ts#currentTerm). */
 export function semesterForMonth(month: number): 1 | 2 {
   return month <= 7 ? 1 : 2;
