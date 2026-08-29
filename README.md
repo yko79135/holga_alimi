@@ -95,6 +95,20 @@ Existing Supabase variables remain required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_P
 
 교사 계정에서는 카테고리를 고르기만 하고, 추가·수정은 관리자만 할 수 있습니다.
 
+## 알림 세부 대상 (모든 학부모 / 모든 학부모 및 교사 / 모든 교사)
+
+Supabase SQL Editor에서 `supabase/20260901_notice_target_audience.sql`를 실행하세요. `notices`에 `target_audience` 칸(`parents` / `parents_and_staff` / `staff`)을 추가하고, 교사 전용 공지가 학부모에게 보이지 않도록 `notices` 조회 정책을 다시 만듭니다. 기존 공지는 모두 `parents`(모든 학부모)로 남습니다.
+
+`알림 작성` 탭에서 발송 범위를 `학교 전체`로 고르면 `세부 대상`에서 아래 셋 중 하나를 선택합니다. `특정 학년`·`특정 학생`은 지금처럼 언제나 학부모 대상입니다.
+
+| 세부 대상 | 받는 사람 |
+| --- | --- |
+| 모든 학부모 | 모든 학부모 계정 (교사·관리자에게는 기존처럼 참고용 알림만 전달) |
+| 모든 학부모 및 교사 | 모든 학부모 + 모든 교사·관리자 |
+| 모든 교사 | 모든 교사·관리자만. 학부모 화면에는 아예 보이지 않습니다 |
+
+`모든 교사` 공지는 학부모가 열람할 수 없으므로 확인·답변 기록이 생기지 않습니다. `발송 기록` 탭에서는 확인 완료 수 대신 `교사 대상 알림`으로 표시됩니다.
+
 ## PWA icon cache after update
 
 Users who installed the app before this icon update may continue seeing the old cached icon. They should:

@@ -14,13 +14,13 @@ import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUplo
 import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalManager";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 import { compareGrades, sortGrades } from "@/lib/grade-sort";
-import { COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, NOTICE_TYPE_LABELS, noticeTypeLabel } from "@/lib/notices";
+import { audienceIncludesParents, COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, DEFAULT_NOTICE_AUDIENCE, NOTICE_AUDIENCES, NOTICE_AUDIENCE_LABELS, NOTICE_TYPE_LABELS, noticeAudienceLabel, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean };
 type ParentLink = { parentId: string; fullName: string; email: string; linkedStudents: Array<{ id: string; name: string; grade: string }> };
 type Profile = { id: string; full_name: string; email: string; role: string };
 type Notice = {
-  id: string; type: string; title: string; body: string; custom_type_label: string | null; target_scope: string; target_grade: string | null;
+  id: string; type: string; title: string; body: string; custom_type_label: string | null; target_scope: string; target_audience: string | null; target_grade: string | null;
   requires_confirmation: boolean; published_at: string; created_by: string;
   notice_students?: Array<{ students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null }>;
   acknowledgements?: Array<{ read_at: string | null; confirmed_at: string | null; parent_reply: string | null; profiles?: { full_name: string } | null }>;
@@ -70,7 +70,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentEditSaving, setStudentEditSaving] = useState(false);
 
   const [form, setForm] = useState({
-    type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[] as string[], customTypeLabel:"",
+    type:"newsletter", title:"", body:"", targetScope:"school", targetAudience:DEFAULT_NOTICE_AUDIENCE as string, targetGrade:"", studentIds:[] as string[], customTypeLabel:"",
   });
   const [studentPickerGrade, setStudentPickerGrade] = useState("");
   const [studentPickerSearch, setStudentPickerSearch] = useState("");
@@ -85,7 +85,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
   const loadNotices = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_grade,requires_confirmation,published_at,created_by,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
+    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_audience,target_grade,requires_confirmation,published_at,created_by,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
     setNotices((data || []) as unknown as Notice[]);
   }, []);
 
@@ -181,6 +181,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   useEffect(() => { if (studentSearch.trim()) setExpandedGrades((current) => Object.fromEntries(Object.keys(groupedStudents).map((g) => [g, true]))); }, [studentSearch, groupedStudents]);
 
   const grades = useMemo(() => sortGrades(Array.from(new Set(students.map((student) => student.grade)))), [students]);
+  // 학년/학생 대상 알림은 언제나 학부모용이라 세부 대상 선택과 무관하게 "학부모"로 부른다.
+  const composeAudienceWord = form.targetScope !== "school" ? "학부모" : form.targetAudience === "staff" ? "교사" : form.targetAudience === "parents_and_staff" ? "학부모·교사" : "학부모";
   const visibleNotices = onlyMine ? notices.filter((notice) => notice.created_by === userId) : notices;
   const confirmedTotal = visibleNotices.reduce((sum, notice) => sum + (notice.acknowledgements || []).filter((ack) => ack.confirmed_at).length, 0);
 
@@ -208,7 +210,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       const res = await fetch("/api/notices/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, attachments }) });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "게시 중 오류가 발생했습니다.");
-      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetGrade:"", studentIds:[], customTypeLabel:"" });
+      setForm({ type:"newsletter", title:"", body:"", targetScope:"school", targetAudience:DEFAULT_NOTICE_AUDIENCE, targetGrade:"", studentIds:[], customTypeLabel:"" });
       setStudentPickerGrade("");
       setStudentPickerSearch("");
       setFiles([]);
@@ -372,7 +374,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   }
 
   function targetText(notice: Notice) {
-    if (notice.target_scope === "school") return "학교 전체";
+    if (notice.target_scope === "school") return `학교 전체 · ${noticeAudienceLabel(notice.target_audience)}`;
     if (notice.target_scope === "grade") return notice.target_grade || "학년";
     const names = (notice.notice_students || []).flatMap((link) => Array.isArray(link.students) ? link.students.map((s) => s.name) : link.students ? [link.students.name] : []);
     return names.join(", ") || "개별 학생";
@@ -382,10 +384,10 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     <div className="staff-wrap">
       <nav className="staff-tabs">
         <button className={tab === "compose" ? "active" : ""} onClick={() => onTabChange("compose")}>알림 작성</button>
+        <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
+        <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
         <button className={tab === "notices" ? "active" : ""} onClick={() => onTabChange("notices")}>발송 기록</button>
         {role === "admin" && <button className={tab === "students" ? "active" : ""} onClick={() => onTabChange("students")}>학생 관리</button>}
-        <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
-        <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
@@ -396,7 +398,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
       {tab === "compose" && (
         <form className="form-panel large" onSubmit={sendNotice}>
-          <div className="section-heading"><div><p className="eyebrow">NEW MESSAGE</p><h2>학부모 알림 작성</h2></div></div>
+          <div className="section-heading"><div><p className="eyebrow">NEW MESSAGE</p><h2>{composeAudienceWord} 알림 작성</h2></div></div>
           <div className="three-columns">
             <div>
               <label>알림 종류</label>
@@ -408,7 +410,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <div><label>발송 범위</label><select value={form.targetScope} onChange={(e) => setForm({...form,targetScope:e.target.value})}><option value="school">학교 전체</option><option value="grade">특정 학년</option><option value="student">특정 학생</option></select></div>
             <div>
               <label>세부 대상</label>
-              {form.targetScope === "school" && <input value="모든 학부모" disabled />}
+              {form.targetScope === "school" && <select value={form.targetAudience} onChange={(e) => setForm({...form,targetAudience:e.target.value})}>{NOTICE_AUDIENCES.map((audience) => <option key={audience} value={audience}>{NOTICE_AUDIENCE_LABELS[audience]}</option>)}</select>}
               {form.targetScope === "grade" && <select value={form.targetGrade} onChange={(e) => setForm({...form,targetGrade:e.target.value})}><option value="">학년 선택</option>{grades.map((grade) => <option key={grade}>{grade}</option>)}</select>}
               {form.targetScope === "student" && <input value={form.studentIds.length ? `${form.studentIds.length}명 선택됨` : "아래에서 학생 선택"} disabled />}
             </div>
@@ -440,7 +442,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <><label>알림 종류 직접 입력</label><input value={form.customTypeLabel} onChange={(e) => setForm({...form,customTypeLabel:e.target.value})} required placeholder="예: 체험학습 안내" /></>
           )}
           <label>제목</label><input value={form.title} onChange={(e) => setForm({...form,title:e.target.value})} required placeholder="예: 수업 태도 관련 생활지도 안내" />
-          <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder="학부모에게 전달할 내용을 작성하세요." />
+          <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder={`${composeAudienceWord}에게 전달할 내용을 작성하세요.`} />
 
           <label>PDF 첨부 (최대 5개, 각 20MB 이하)</label><input type="file" accept="application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, MAX_NOTICE_ATTACHMENTS))} />
           {files.length > 0 && <div className="attachment-list">{files.map((file, index) => <div className="attachment-item" key={`${file.name}-${index}`}><span>📎 {file.name} · {formatBytes(file.size)}</span><button type="button" className="secondary" onClick={() => setFiles(files.filter((_, i) => i !== index))}>삭제</button></div>)}</div>}
@@ -463,6 +465,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           <div className="sent-list">
             {visibleNotices.map((notice) => {
               const acks = notice.acknowledgements || [];
+              // 교사 전용 공지는 학부모에게 보이지 않으므로 확인 기록 자체가 존재하지 않는다.
+              const reachesParents = notice.target_scope !== "school" || audienceIncludesParents(notice.target_audience);
               const isExpanded = !!expandedNoticeIds[notice.id];
               const toggleExpanded = () => setExpandedNoticeIds((current) => ({ ...current, [notice.id]: !isExpanded }));
               return <article className="sent-card" key={notice.id}>
@@ -471,7 +475,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                     <label className="notice-select" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedNoticeIds.includes(notice.id)} onChange={() => toggleNoticeSelection(notice.id)} aria-label={`${notice.title} 선택`} /></label>
                     <div><span className={`tag ${notice.type}`}>{noticeTypeLabel(notice)}</span><h3>{notice.title}</h3><p>{targetText(notice)} · {new Date(notice.published_at).toLocaleString("ko-KR")}</p></div>
                   </div>
-                  <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div>
+                  {reachesParents ? <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div> : <div className="ack-summary"><b>교사</b><span>대상 알림</span></div>}
                 </div>
                 <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{notice.body}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
@@ -484,7 +488,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                         <span>{ack.confirmed_at ? `확인 완료 · ${new Date(ack.confirmed_at).toLocaleString("ko-KR")}` : ack.read_at ? `읽음 · ${new Date(ack.read_at).toLocaleString("ko-KR")}` : "미확인"}</span>
                         {ack.parent_reply && <p>“{ack.parent_reply}”</p>}
                       </div>
-                    )) : <p className="muted">아직 확인한 학부모가 없습니다.</p>}
+                    )) : <p className="muted">{reachesParents ? "아직 확인한 학부모가 없습니다." : "교사 대상 알림이라 학부모 확인 기록이 없습니다."}</p>}
                   </div>
                 )}
                 <div className="danger-zone"><button type="button" className="danger-button" onClick={() => { setDeleteFeedback(null); setConfirmText(""); setNoticeDeleteTarget(notice); }}>공지 영구 삭제</button></div>

@@ -3,8 +3,9 @@ import "server-only";
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildEarlyDismissalPayload, buildReplyPushPayload, buildSafeNoticePayload, buildStaffNoticePayload, type SafePushPayload } from "./payload";
+import { audienceIncludesParents, audienceIncludesStaff } from "@/lib/notices";
 
-type Notice = { id: string; title: string; body: string; target_scope: string; target_grade: string | null; created_by?: string | null };
+type Notice = { id: string; title: string; body: string; target_scope: string; target_audience?: string | null; target_grade: string | null; created_by?: string | null };
 type Sub = { id: string; endpoint: string; p256dh: string; auth: string; user_id: string };
 type PushResult = { sent: number; unsubscribed: number; failed: number; recipients: number };
 
@@ -19,11 +20,13 @@ function configureWebPush() {
   return true;
 }
 
-export async function resolveNoticeRecipientIds(notice: Pick<Notice, "id" | "target_scope" | "target_grade">) {
+export async function resolveNoticeRecipientIds(notice: Pick<Notice, "id" | "target_scope" | "target_audience" | "target_grade">) {
   const admin = createAdminClient();
   let ids: string[] = [];
 
   if (notice.target_scope === "school") {
+    // A 모든 교사 notice has no parent recipients at all.
+    if (!audienceIncludesParents(notice.target_audience)) return [];
     const { data } = await admin.from("profile_roles").select("profile_id").eq("role", "parent");
     ids = (data || []).map((r: any) => r.profile_id);
   } else if (notice.target_scope === "grade") {
@@ -88,21 +91,36 @@ async function pushToUserIds(userIds: string[], payload: SafePushPayload): Promi
   };
 }
 
+function mergeResults(a: PushResult, b: PushResult): PushResult {
+  return {
+    sent: a.sent + b.sent,
+    unsubscribed: a.unsubscribed + b.unsubscribed,
+    failed: a.failed + b.failed,
+    recipients: a.recipients + b.recipients,
+  };
+}
+
 /** Sends the notice to its parent recipients, and -- for school-wide notices only -- to every
  * teacher/admin as well (minus the author, who already knows they sent it). Individual-student
  * notices (discipline/praise/attendance/single-student) are not broadcast to staff who aren't
- * involved, to keep those records scoped the way the rest of the app scopes them. */
+ * involved, to keep those records scoped the way the rest of the app scopes them.
+ *
+ * The reported counts stay parent-only for a plain 모든 학부모 notice (the staff copy there is an
+ * informational broadcast, not the point of the send). When the author explicitly picked
+ * 모든 교사 or 모든 학부모 및 교사, the teachers are part of the intended audience, so they count
+ * towards the "n건 전송" the compose form reports back. */
 export async function sendNoticePushes(notice: Notice): Promise<PushResult> {
   const parentIds = await resolveNoticeRecipientIds(notice);
   const parentResult = await pushToUserIds(parentIds, buildSafeNoticePayload(notice));
 
-  if (notice.target_scope === "school") {
-    const staffIds = await resolveStaffRecipientIds();
-    const recipients = notice.created_by ? staffIds.filter((id) => id !== notice.created_by) : staffIds;
-    await pushToUserIds(recipients, buildStaffNoticePayload(notice));
-  }
+  if (notice.target_scope !== "school") return parentResult;
 
-  return parentResult;
+  const staffIds = await resolveStaffRecipientIds();
+  const recipients = notice.created_by ? staffIds.filter((id) => id !== notice.created_by) : staffIds;
+  const staffResult = await pushToUserIds(recipients, buildStaffNoticePayload(notice));
+
+  if (!audienceIncludesStaff(notice.target_audience)) return parentResult;
+  return audienceIncludesParents(notice.target_audience) ? mergeResults(parentResult, staffResult) : staffResult;
 }
 
 /** Pushes a discipline-point notice to every teacher/admin except whoever granted the point, so

@@ -14,6 +14,10 @@ do $$ begin
   create type public.target_scope as enum ('school', 'grade', 'student');
 exception when duplicate_object then null; end $$;
 
+do $$ begin
+  create type public.notice_audience as enum ('parents', 'parents_and_staff', 'staff');
+exception when duplicate_object then null; end $$;
+
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
@@ -46,6 +50,7 @@ create table if not exists public.notices (
   title text not null,
   body text not null,
   target_scope public.target_scope not null default 'school',
+  target_audience public.notice_audience not null default 'parents',
   target_grade text,
   requires_confirmation boolean not null default false,
   created_by uuid not null references public.profiles(id),
@@ -54,6 +59,10 @@ create table if not exists public.notices (
   constraint target_grade_required check (
     (target_scope = 'grade' and target_grade is not null)
     or target_scope <> 'grade'
+  ),
+  -- Only school-wide notices pick an audience; grade/student notices are always parent-facing.
+  constraint notice_audience_scope check (
+    target_scope = 'school' or target_audience = 'parents'
   )
 );
 
@@ -77,6 +86,7 @@ create index if not exists parent_students_parent_idx on public.parent_students(
 create index if not exists parent_students_student_idx on public.parent_students(student_id);
 create index if not exists students_grade_idx on public.students(grade);
 create index if not exists notices_scope_grade_idx on public.notices(target_scope, target_grade);
+create index if not exists notices_scope_audience_idx on public.notices(target_scope, target_audience);
 create index if not exists notice_students_student_idx on public.notice_students(student_id);
 create index if not exists acknowledgements_parent_idx on public.acknowledgements(parent_id);
 
@@ -203,7 +213,7 @@ using (
   or (
     published_at <= now()
     and (
-      target_scope = 'school'
+      (target_scope = 'school' and target_audience <> 'staff')
       or (
         target_scope = 'grade'
         and exists (
