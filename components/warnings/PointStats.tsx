@@ -7,7 +7,7 @@ import { MAX_DISCIPLINE_POINT_VALUE } from "@/lib/warnings/categories";
 import type { MonthlyWarningBreakdown, WarningStudentSummary } from "@/lib/warnings/stats";
 import { isValidDateOnly } from "@/lib/warnings/term";
 import { sortGrades } from "@/lib/grade-sort";
-import { SEMESTER_LABELS, SEMESTERS } from "@/lib/semester";
+import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester } from "@/lib/semester";
 
 type AuditEntry = {
   id: string;
@@ -190,7 +190,7 @@ function PointHistoryTable({
 
 export default function PointStats({ role }: { role: string }) {
   const [year, setYear] = useState(now.getFullYear());
-  const [semester, setSemester] = useState(now.getMonth() < 7 ? 1 : 2);
+  const [semester, setSemester] = useState<number>(defaultSemester());
   const [grade, setGrade] = useState("");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<StatsStudent[]>([]);
@@ -376,7 +376,7 @@ export default function PointStats({ role }: { role: string }) {
 
       <div className="warning-toolbar">
         <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
-        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
+        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SELECTABLE_SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
         <label>학년<select value={grade} onChange={(e) => setGrade(e.target.value)}><option value="">전체</option>{grades.map((g) => <option key={g}>{g}</option>)}</select></label>
         <label>학생 검색<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="학생 이름" /></label>
       </div>
