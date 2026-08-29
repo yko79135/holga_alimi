@@ -1,7 +1,7 @@
-import { requestState, type EarlyDismissalRequest } from "./types";
+import { isRequestType, requestState, type EarlyDismissalRequest } from "./types";
 
 export const REQUEST_SELECT =
-  "id,student_id,parent_id,dismissal_date,dismissal_time,reason,guardian_name,guardian_contact,returns_same_day," +
+  "id,student_id,parent_id,request_type,dismissal_date,dismissal_time,reason,guardian_name,guardian_contact,returns_same_day," +
   "cancelled_at,attendance_recorded_at,attendance_recorded_by,created_at,students(id,name,grade)";
 
 type Context = {
@@ -23,6 +23,8 @@ export function serializeRequestRow(row: any, context: Context): EarlyDismissalR
     studentGrade: student.grade || "",
     parentId: row.parent_id,
     parentName: context.names.get(row.parent_id) || "학부모",
+    // Rows written before 결석 신청 existed carry no request_type; they were all 조퇴.
+    type: isRequestType(row.request_type) ? row.request_type : "early_dismissal",
     dismissalDate: row.dismissal_date,
     dismissalTime: row.dismissal_time,
     reason: row.reason,

@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles } from "@/lib/roles-server";
 import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildSubmissionNotice } from "@/lib/early-dismissal/format";
-import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
+import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 import { serializeRequestRow, REQUEST_SELECT } from "@/lib/early-dismissal/serialize";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function GET() {
   const { data, error } = await query;
   if (error) {
     console.error("early-dismissal-list-failed", { code: error.code, message: error.message });
-    return NextResponse.json({ error: "조퇴 신청 목록을 불러오지 못했습니다." }, { status: 500 });
+    return NextResponse.json({ error: "조퇴·결석 신청 목록을 불러오지 못했습니다." }, { status: 500 });
   }
 
   const rows = (data || []) as any[];
@@ -72,8 +72,9 @@ export async function GET() {
   return NextResponse.json({ requests, viewerId: user.id, isStaff });
 }
 
-/** A parent submits a request for one of their own children. Every teacher and admin is pushed a
- * notification -- that notification is the whole workflow; nothing waits on an approval. */
+/** A parent submits a 조퇴 or 결석 request for one of their own children. Every teacher and admin
+ * is pushed a notification -- that notification is the whole workflow; nothing waits on an
+ * approval. */
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -88,16 +89,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "입력값을 확인해 주세요." }, { status: 400 });
   }
 
+  // Requests submitted before 결석 existed carried no type at all, so an absent field means 조퇴.
+  if (body.type !== undefined && !isRequestType(body.type)) return NextResponse.json({ error: "신청 종류를 확인해 주세요." }, { status: 400 });
+  const requestType: EarlyDismissalRequestType = isRequestType(body.type) ? body.type : "early_dismissal";
   const studentId = String(body.studentId || "").trim();
+  const typeLabel = requestTypeLabel(requestType);
   const dismissalDate = String(body.dismissalDate || "").trim();
-  const dismissalTime = String(body.dismissalTime || "").trim();
+  // A leaving time and a same-day return describe a 조퇴 only; on a 결석 the child is away all day.
+  const dismissalTime = usesDismissalTime(requestType) ? String(body.dismissalTime || "").trim() : "";
   const reason = String(body.reason || "").trim();
   const guardianName = String(body.guardianName || "").trim().slice(0, MAX_NAME_LENGTH);
   const guardianContact = String(body.guardianContact || "").trim().slice(0, MAX_CONTACT_LENGTH);
-  const returnsSameDay = body.returnsSameDay === true;
+  const returnsSameDay = usesDismissalTime(requestType) && body.returnsSameDay === true;
 
-  if (!studentId || !dismissalDate || !reason) return NextResponse.json({ error: "학생, 조퇴 날짜, 사유를 입력해 주세요." }, { status: 400 });
-  if (!DATE_PATTERN.test(dismissalDate)) return NextResponse.json({ error: "조퇴 날짜를 확인해 주세요." }, { status: 400 });
+  if (!studentId || !dismissalDate || !reason) return NextResponse.json({ error: `학생, ${typeLabel} 날짜, 사유를 입력해 주세요.` }, { status: 400 });
+  if (!DATE_PATTERN.test(dismissalDate)) return NextResponse.json({ error: `${typeLabel} 날짜를 확인해 주세요.` }, { status: 400 });
   if (dismissalTime && !TIME_PATTERN.test(dismissalTime)) return NextResponse.json({ error: "조퇴 시각을 확인해 주세요." }, { status: 400 });
   if (reason.length > MAX_REASON_LENGTH) return NextResponse.json({ error: `사유는 ${MAX_REASON_LENGTH}자 이내로 입력해 주세요.` }, { status: 400 });
 
@@ -105,16 +111,21 @@ export async function POST(req: Request) {
   // into a message the parent can act on.
   const linkRes = await supabase.from("parent_students").select("student_id,students(id,name,grade)").eq("parent_id", user.id).eq("student_id", studentId).maybeSingle();
   const student = Array.isArray((linkRes.data as any)?.students) ? (linkRes.data as any).students[0] : (linkRes.data as any)?.students;
-  if (linkRes.error || !student) return NextResponse.json({ error: "연결된 자녀만 조퇴를 신청할 수 있습니다." }, { status: 403 });
+  if (linkRes.error || !student) return NextResponse.json({ error: `연결된 자녀만 ${typeLabel} 신청을 할 수 있습니다.` }, { status: 403 });
 
-  const duplicate = await supabase.from("early_dismissal_requests").select("id").eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
-  if (duplicate.data) return NextResponse.json({ error: "같은 날짜에 이미 제출한 조퇴 신청이 있습니다." }, { status: 409 });
+  // One open request per child per day, whichever kind: 조퇴와 결석은 같은 날 함께 성립하지 않는다.
+  const duplicate = await supabase.from("early_dismissal_requests").select("id,request_type").eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
+  if (duplicate.data) {
+    const existingLabel = requestTypeLabel(isRequestType((duplicate.data as any).request_type) ? (duplicate.data as any).request_type : "early_dismissal");
+    return NextResponse.json({ error: `같은 날짜에 이미 제출한 ${existingLabel} 신청이 있습니다.` }, { status: 409 });
+  }
 
   const insertRes = await supabase
     .from("early_dismissal_requests")
     .insert({
       student_id: studentId,
       parent_id: user.id,
+      request_type: requestType,
       dismissal_date: dismissalDate,
       dismissal_time: dismissalTime || null,
       reason,
@@ -126,7 +137,7 @@ export async function POST(req: Request) {
     .single();
   if (insertRes.error || !insertRes.data) {
     console.error("early-dismissal-insert-failed", { code: insertRes.error?.code, message: insertRes.error?.message });
-    return NextResponse.json({ error: "조퇴 신청을 저장하지 못했습니다. 다시 시도해 주세요." }, { status: 500 });
+    return NextResponse.json({ error: `${typeLabel} 신청을 저장하지 못했습니다. 다시 시도해 주세요.` }, { status: 500 });
   }
 
   const requestId = insertRes.data.id;
@@ -136,7 +147,7 @@ export async function POST(req: Request) {
   ]);
   const parentName = (profile as any)?.full_name || "학부모";
   const homeroomTeacherName = (homeroomRes.data as any)?.teacher_name || "";
-  const content = buildSubmissionNotice({ studentName: student.name, studentGrade: student.grade, dismissalDate, dismissalTime: dismissalTime || null, reason, guardianName, returnsSameDay }, parentName, homeroomTeacherName);
+  const content = buildSubmissionNotice({ type: requestType, studentName: student.name, studentGrade: student.grade, dismissalDate, dismissalTime: dismissalTime || null, reason, guardianName, returnsSameDay }, parentName, homeroomTeacherName);
 
   after(async () => {
     try {
@@ -150,5 +161,5 @@ export async function POST(req: Request) {
     }
   });
 
-  return NextResponse.json({ success: true, requestId, message: "조퇴 신청을 접수했습니다. 모든 선생님께 알림이 전송됩니다." });
+  return NextResponse.json({ success: true, requestId, message: `${typeLabel} 신청을 접수했습니다. 모든 선생님께 알림이 전송됩니다.` });
 }

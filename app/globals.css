@@ -2290,7 +2290,7 @@ h3 {
   }
 }
 
-/* Early dismissal (조퇴) requests and homeroom settings */
+/* Early dismissal (조퇴) and absence (결석) requests, and homeroom settings */
 .early-dismissal-row {
   display: grid;
   gap: 8px;
@@ -2312,6 +2312,14 @@ h3 {
 }
 .early-dismissal-row p {
   margin: 0;
+}
+.tag.request-type-early_dismissal {
+  background: var(--blue-100);
+  color: var(--teal-800);
+}
+.tag.request-type-absence {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .tag.early-dismissal-submitted {
   background: var(--sand-100);
