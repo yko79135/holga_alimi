@@ -20,3 +20,34 @@ export function noticeTypeLabel(notice: { type: string; custom_type_label?: stri
   if (notice.type === CUSTOM_NOTICE_TYPE) return notice.custom_type_label?.trim() || "직접 입력";
   return NOTICE_TYPE_LABELS[notice.type] || notice.type;
 }
+
+/** Who a 학교 전체 notice actually goes out to. Only meaningful for target_scope = 'school':
+ * grade- and student-scoped notices are always parent-facing, so they stay on 'parents'. */
+export const NOTICE_AUDIENCES = ["parents", "parents_and_staff", "staff"] as const;
+
+export type NoticeAudience = (typeof NOTICE_AUDIENCES)[number];
+
+export const NOTICE_AUDIENCE_LABELS: Record<NoticeAudience, string> = {
+  parents: "모든 학부모",
+  parents_and_staff: "모든 학부모 및 교사",
+  staff: "모든 교사",
+};
+
+export const DEFAULT_NOTICE_AUDIENCE: NoticeAudience = "parents";
+
+export function isNoticeAudience(value: unknown): value is NoticeAudience {
+  return typeof value === "string" && (NOTICE_AUDIENCES as readonly string[]).includes(value);
+}
+
+/** Notices on 'staff' never reach parents; the other two do. */
+export function audienceIncludesParents(audience: unknown) {
+  return !isNoticeAudience(audience) || audience !== "staff";
+}
+
+export function audienceIncludesStaff(audience: unknown) {
+  return isNoticeAudience(audience) && audience !== "parents";
+}
+
+export function noticeAudienceLabel(audience: unknown) {
+  return isNoticeAudience(audience) ? NOTICE_AUDIENCE_LABELS[audience] : NOTICE_AUDIENCE_LABELS.parents;
+}
