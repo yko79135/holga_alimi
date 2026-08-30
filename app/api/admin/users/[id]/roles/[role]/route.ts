@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { isAppRole, normalizeRoles } from "@/lib/roles";
+import { canSeeProfile } from "@/lib/admin/test-fixtures";
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; role: string }> }) {
   const auth = await requireAdmin();
@@ -9,6 +10,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { id, role } = await params;
   if (!isAppRole(role)) return adminJsonError("삭제할 권한 값이 올바르지 않습니다.", 400);
   const admin = createAdminClient();
+  if (!(await canSeeProfile(admin, id, auth.user.id))) return adminJsonError("대상 계정을 찾을 수 없습니다.", 404);
   const { data: rows } = await admin.from("profile_roles").select("role").eq("profile_id", id);
   const roles = normalizeRoles((rows || []).map((r: any) => r.role));
   if (!roles.includes(role)) return NextResponse.json({ roles, message: "이미 제거된 권한입니다." });

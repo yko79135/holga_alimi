@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { type AppRole, isAppRole, normalizeRoles, roleLabel } from "@/lib/roles";
+import { canSeeProfile } from "@/lib/admin/test-fixtures";
 
 async function updatedRoles(admin: ReturnType<typeof createAdminClient>, userId: string) {
   const { data } = await admin.from("profile_roles").select("role").eq("profile_id", userId).order("role");
@@ -20,7 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     admin.auth.admin.getUserById(id),
     admin.from("profiles").select("id").eq("id", id).maybeSingle(),
   ]);
-  if (!authUser.user || !profile) return adminJsonError("대상 계정을 찾을 수 없습니다.", 404);
+  if (!authUser.user || !profile || !(await canSeeProfile(admin, id, auth.user.id))) return adminJsonError("대상 계정을 찾을 수 없습니다.", 404);
   const { error } = await admin.from("profile_roles").upsert({ profile_id: id, role, assigned_by: auth.user.id }, { onConflict: "profile_id,role" });
   if (error) return adminJsonError("권한 추가에 실패했습니다.", 500);
   return NextResponse.json({ roles: await updatedRoles(admin, id), message: `기존 계정에 ${roleLabel(role as AppRole)} 권한이 추가되었습니다. 같은 이메일과 비밀번호로 로그인하여 화면을 전환할 수 있습니다.` });

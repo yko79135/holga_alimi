@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   // students.grade has no fixed enum -- it's free text -- so this is just "whatever grades
   // currently exist," not an authoritative list. The signup form falls back to free-text entry
   // for a grade that isn't in this list yet (e.g. a brand-new incoming class with no students).
-  const { data: gradeRows } = await admin.from("students").select("grade").eq("active", true);
+  const { data: gradeRows } = await admin.from("students").select("grade").eq("active", true).is("test_owner_id", null);
   const grades = sortGrades(Array.from(new Set((gradeRows || []).map((row: any) => row.grade))));
 
   return NextResponse.json({ valid: true, grades });
