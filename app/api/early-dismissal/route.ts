@@ -6,6 +6,7 @@ import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildSubmissionNotice } from "@/lib/early-dismissal/format";
 import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 import { serializeRequestRow, REQUEST_SELECT } from "@/lib/early-dismissal/serialize";
+import { isMissingRequestTypeError, warnRequestTypeMissing, withoutRequestType } from "@/lib/early-dismissal/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +24,17 @@ export async function GET() {
   const isStaff = roles.includes("admin") || roles.includes("teacher");
   if (!isStaff && !roles.includes("parent")) return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
 
-  let query = supabase.from("early_dismissal_requests").select(REQUEST_SELECT).order("dismissal_date", { ascending: false }).order("created_at", { ascending: false });
-  if (!isStaff) query = query.eq("parent_id", user.id);
-  const { data, error } = await query;
+  const listQuery = (select: string) => {
+    const query = supabase.from("early_dismissal_requests").select(select).order("dismissal_date", { ascending: false }).order("created_at", { ascending: false });
+    return isStaff ? query : query.eq("parent_id", user.id);
+  };
+  let { data, error } = await listQuery(REQUEST_SELECT);
+  // A database still waiting on the 결석 migration has no request_type; read it the old way
+  // rather than showing every parent an error. Those rows are all 조퇴.
+  if (isMissingRequestTypeError(error)) {
+    warnRequestTypeMissing("list");
+    ({ data, error } = await listQuery(withoutRequestType(REQUEST_SELECT)));
+  }
   if (error) {
     console.error("early-dismissal-list-failed", { code: error.code, message: error.message });
     return NextResponse.json({ error: "조퇴·결석 신청 목록을 불러오지 못했습니다." }, { status: 500 });
@@ -114,27 +123,38 @@ export async function POST(req: Request) {
   if (linkRes.error || !student) return NextResponse.json({ error: `연결된 자녀만 ${typeLabel} 신청을 할 수 있습니다.` }, { status: 403 });
 
   // One open request per child per day, whichever kind: 조퇴와 결석은 같은 날 함께 성립하지 않는다.
-  const duplicate = await supabase.from("early_dismissal_requests").select("id,request_type").eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
+  const duplicateQuery = (select: string) =>
+    supabase.from("early_dismissal_requests").select(select).eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
+  let duplicate: any = await duplicateQuery("id,request_type");
+  if (isMissingRequestTypeError(duplicate.error)) duplicate = await duplicateQuery("id");
   if (duplicate.data) {
     const existingLabel = requestTypeLabel(isRequestType((duplicate.data as any).request_type) ? (duplicate.data as any).request_type : "early_dismissal");
     return NextResponse.json({ error: `같은 날짜에 이미 제출한 ${existingLabel} 신청이 있습니다.` }, { status: 409 });
   }
 
-  const insertRes = await supabase
-    .from("early_dismissal_requests")
-    .insert({
-      student_id: studentId,
-      parent_id: user.id,
-      request_type: requestType,
-      dismissal_date: dismissalDate,
-      dismissal_time: dismissalTime || null,
-      reason,
-      guardian_name: guardianName || null,
-      guardian_contact: guardianContact || null,
-      returns_same_day: returnsSameDay,
-    })
-    .select("id")
-    .single();
+  const row = {
+    student_id: studentId,
+    parent_id: user.id,
+    request_type: requestType,
+    dismissal_date: dismissalDate,
+    dismissal_time: dismissalTime || null,
+    reason,
+    guardian_name: guardianName || null,
+    guardian_contact: guardianContact || null,
+    returns_same_day: returnsSameDay,
+  };
+  const insert = (values: Record<string, unknown>) => supabase.from("early_dismissal_requests").insert(values).select("id").single();
+  let insertRes = await insert(row);
+  // 조퇴 was accepted long before request_type existed, so a database that is one migration
+  // behind must still take it -- writing the column is the only thing 결석 added to this insert.
+  if (isMissingRequestTypeError(insertRes.error)) {
+    warnRequestTypeMissing("insert");
+    if (requestType === "absence") {
+      return NextResponse.json({ error: "결석 신청은 아직 받을 수 없습니다. 조퇴로 신청하시거나 학교로 연락해 주세요." }, { status: 503 });
+    }
+    const { request_type: _unmigrated, ...legacyRow } = row;
+    insertRes = await insert(legacyRow);
+  }
   if (insertRes.error || !insertRes.data) {
     console.error("early-dismissal-insert-failed", { code: insertRes.error?.code, message: insertRes.error?.message });
     return NextResponse.json({ error: `${typeLabel} 신청을 저장하지 못했습니다. 다시 시도해 주세요.` }, { status: 500 });

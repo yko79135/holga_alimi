@@ -123,6 +123,15 @@ Do not assume an already installed icon will always refresh automatically.
 
 Supabase SQL Editor에서 `supabase/20260828_homeroom_and_early_dismissal.sql`를 먼저 실행하고, 이어서 `supabase/20260829_early_dismissal_no_approval.sql`, `supabase/20260830_principal_designation.sql`, `supabase/20260831_early_dismissal_absence_request_type.sql`를 순서대로 실행하세요. 두 번째 파일이 결재 절차를 걷어내고 출석부 기록 칸을 추가하며, 세 번째 파일이 교장 선생님 지정을, 네 번째 파일이 결석 신청을 위한 `request_type` 칸을 추가합니다.
 
+네 개 파일 중 하나라도 건너뛰면 학부모 화면에서 `조퇴 신청을 저장하지 못했습니다`가 나옵니다. 아래 SQL로 `request_type` 칸이 실제로 있는지 확인할 수 있습니다.
+
+```sql
+select column_name from information_schema.columns
+where table_schema = 'public' and table_name = 'early_dismissal_requests' and column_name = 'request_type';
+```
+
+칸이 없으면 `supabase/20260831_early_dismissal_absence_request_type.sql`를 실행하세요. 그때까지는 조퇴 신청만 예전 방식으로 접수되고, 결석 신청은 `결석 신청은 아직 받을 수 없습니다`로 안내됩니다.
+
 ### 동작 방식
 
 1. 학부모가 `조퇴·결석 신청` 탭에서 신청 종류(조퇴 / 결석), 자녀, 날짜, 사유, 인솔자를 입력해 신청합니다. 연결된 자녀만 신청할 수 있습니다.
