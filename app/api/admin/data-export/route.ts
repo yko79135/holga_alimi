@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isTestRowVisible } from "@/lib/test-data";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,10 @@ export const runtime = "nodejs";
  * signup_invites/signup_invite_redemptions (onboarding tokens, not institutional records).
  * Note: this exports table rows only -- PDF files in the notice-attachments Storage bucket are
  * not included, only their metadata (notice_attachments rows). */
+/** 남의 테스트 계정·학생은 백업에도 담기지 않습니다. 두 테이블에서 빠진 행을 참조하는
+ * 나머지 테이블 행도 아래에서 함께 걸러냅니다. */
+const TEST_OWNED_TABLES = ["profiles", "students"] as const;
+
 const EXPORT_TABLES = [
   "profiles",
   "profile_roles",
@@ -41,6 +46,20 @@ export async function GET() {
 
   const tables: Record<string, unknown[]> = {};
   for (const result of results) tables[result.table] = result.data || [];
+
+  for (const table of TEST_OWNED_TABLES) {
+    tables[table] = (tables[table] as Array<{ id: string; test_owner_id?: string | null }>).filter((row) => isTestRowVisible(row, auth.user.id));
+  }
+  const visibleProfileIds = new Set((tables.profiles as Array<{ id: string }>).map((row) => row.id));
+  const visibleStudentIds = new Set((tables.students as Array<{ id: string }>).map((row) => row.id));
+  const keepByProfile = (rows: unknown[], key: string) => rows.filter((row) => visibleProfileIds.has((row as Record<string, string>)[key]));
+  const keepByStudent = (rows: unknown[], key: string) => rows.filter((row) => visibleStudentIds.has((row as Record<string, string>)[key]));
+  tables.profile_roles = keepByProfile(tables.profile_roles, "profile_id");
+  tables.acknowledgements = keepByProfile(tables.acknowledgements, "parent_id");
+  tables.parent_students = keepByStudent(keepByProfile(tables.parent_students, "parent_id"), "student_id");
+  for (const table of ["notice_students", "warning_entries", "attendance_entries"]) {
+    tables[table] = keepByStudent(tables[table], "student_id");
+  }
 
   const payload = { exportedAt: new Date().toISOString(), tables };
   const filename = `holga-backup-${new Date().toISOString().slice(0, 10)}.json`;

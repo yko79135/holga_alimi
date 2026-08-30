@@ -2019,6 +2019,20 @@ h3 {
   background: var(--sand-100);
   color: var(--teal-700);
 }
+/* 나에게만 보이는 테스트용 계정·학생 표시. 실제 명단과 헷갈리지 않도록 이름 옆에 붙습니다. */
+.test-badge {
+  display: inline-flex;
+  width: max-content;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  border: 1px dashed var(--teal-700);
+  background: transparent;
+  color: var(--teal-700);
+}
 .student-management-layout {
   display: grid;
   gap: 16px;

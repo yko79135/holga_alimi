@@ -22,7 +22,8 @@ export async function findMatchingStudents(studentName: string, studentGrade: st
   const normalizedGrade = normalizeMatchText(studentGrade);
   if (!normalizedName || !normalizedGrade) return [];
 
-  const { data, error } = await admin.from("students").select("id,name,grade,homeroom").eq("active", true);
+  // 테스트 학생은 어느 학부모의 자녀도 아니므로 가입 매칭 후보에서 아예 제외합니다.
+  const { data, error } = await admin.from("students").select("id,name,grade,homeroom").eq("active", true).is("test_owner_id", null);
   // Surface a failed lookup instead of silently returning "no matches" -- treating a query
   // failure as "definitely no existing student" would make the caller create a duplicate.
   if (error) throw new Error(`STUDENT_LOOKUP_FAILED: ${error.message}`);
