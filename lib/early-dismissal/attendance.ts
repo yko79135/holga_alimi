@@ -16,7 +16,7 @@ type Params = {
   requestId: string;
   studentId: string;
   studentName: string;
-  /** Decides which status the day is written as: 조퇴 -> early_leave, 결석 -> absent. */
+  /** Decides which status the day is written as: 조퇴 -> early_leave, 지각 -> late, 결석 -> absent. */
   type: EarlyDismissalRequestType;
   dismissalDate: string;
   dismissalTime: string | null;
@@ -87,7 +87,7 @@ async function writeEntry(
   if (entryRes.error || !entryRes.data) throw entryRes.error || new Error("entry insert returned no row");
 }
 
-/** Writes 조퇴 or 결석 into the attendance record when a teacher records the request. Never
+/** Writes 조퇴, 지각, or 결석 into the attendance record when a teacher records the request. Never
  * throws: a failure is reported back for the caller to surface so the teacher can still enter the
  * day by hand in 출석 관리. */
 export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, params: Params): Promise<AttendanceSyncResult> {

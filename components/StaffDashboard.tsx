@@ -14,6 +14,7 @@ import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUplo
 import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalManager";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 import { compareGrades, sortGrades } from "@/lib/grade-sort";
+import { REQUEST_TYPES_TAB_LABEL } from "@/lib/early-dismissal/types";
 import { audienceIncludesParents, COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, DEFAULT_NOTICE_AUDIENCE, NOTICE_AUDIENCES, NOTICE_AUDIENCE_LABELS, NOTICE_TYPE_LABELS, noticeAudienceLabel, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean; test_owner_id?: string | null };
@@ -392,7 +393,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
         <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => onTabChange("academic-calendar")}>학사일정</button>
-        <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => onTabChange("early-dismissal")}>조퇴·결석 신청</button>
+        <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => onTabChange("early-dismissal")}>{REQUEST_TYPES_TAB_LABEL}</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
       </nav>
 

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment } from "@/lib/early-dismissal/format";
 import { compareGrades } from "@/lib/grade-sort";
-import { REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
+import { REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 
 type Filter = "open" | "unrecorded" | "all";
 
@@ -79,9 +79,9 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
     <section className="content-card">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">EARLY DISMISSAL</p>
-          <h2>조퇴 · 결석 신청</h2>
-          <p className="muted">학부모가 제출한 조퇴·결석 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 신청한 종류대로 출석부에 기록해 주세요.</p>
+          <p className="eyebrow">ATTENDANCE REQUESTS</p>
+          <h2>{REQUEST_TYPES_SUMMARY} 신청</h2>
+          <p className="muted">학부모가 제출한 {REQUEST_TYPES_SUMMARY} 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 신청한 종류대로 출석부에 기록해 주세요.</p>
         </div>
         <span className="pill">출석부 미기록 {unrecordedCount}건</span>
       </div>
@@ -111,7 +111,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
               <p className="muted">
                 {request.guardianName ? `인솔자 ${request.guardianName}` : "인솔자 미기재"}
                 {request.guardianContact ? ` · ${request.guardianContact}` : ""}
-                {usesDismissalTime(request.type) && request.returnsSameDay ? " · 당일 복귀 예정" : ""}
+                {usesReturnsSameDay(request.type) && request.returnsSameDay ? " · 당일 복귀 예정" : ""}
               </p>
 
               {request.attendanceRecordedAt && (

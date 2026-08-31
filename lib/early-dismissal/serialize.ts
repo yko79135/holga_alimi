@@ -23,7 +23,7 @@ export function serializeRequestRow(row: any, context: Context): EarlyDismissalR
     studentGrade: student.grade || "",
     parentId: row.parent_id,
     parentName: context.names.get(row.parent_id) || "학부모",
-    // Rows written before 결석 신청 existed carry no request_type; they were all 조퇴.
+    // Rows written before the other kinds existed carry no request_type; they were all 조퇴.
     type: isRequestType(row.request_type) ? row.request_type : "early_dismissal",
     dismissalDate: row.dismissal_date,
     dismissalTime: row.dismissal_time,

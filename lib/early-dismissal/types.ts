@@ -10,25 +10,65 @@ export const STATE_LABELS: Record<EarlyDismissalState, string> = {
   cancelled: "취소됨",
 };
 
-/** A parent asks for one of two things on a given day. They share one form, one notification
- * path, and one attendance write; only the label and the status a teacher records differ. */
-export type EarlyDismissalRequestType = "early_dismissal" | "absence";
+/** A parent asks for one of three things on a given day. They share one form, one notification
+ * path, and one attendance write; only the label, what the clock on the form means, and the
+ * status a teacher records differ. */
+export type EarlyDismissalRequestType = "early_dismissal" | "absence" | "tardy";
 
-export const REQUEST_TYPES: EarlyDismissalRequestType[] = ["early_dismissal", "absence"];
+/** Display order on the parent's form: the two kinds that carry a clock, then the whole-day 결석. */
+export const REQUEST_TYPES: EarlyDismissalRequestType[] = ["early_dismissal", "tardy", "absence"];
 
 export const REQUEST_TYPE_LABELS: Record<EarlyDismissalRequestType, string> = {
   early_dismissal: "조퇴",
   absence: "결석",
+  tardy: "지각",
 };
+
+/** "조퇴 · 지각 · 결석" and "조퇴·지각·결석 신청" -- headings and tab buttons name every kind so a
+ * parent can tell one tab covers all of them. Derived from REQUEST_TYPES so adding a kind can
+ * never leave a stale label behind. */
+export const REQUEST_TYPES_SUMMARY = REQUEST_TYPES.map((type) => REQUEST_TYPE_LABELS[type]).join(" · ");
+export const REQUEST_TYPES_TAB_LABEL = `${REQUEST_TYPES.map((type) => REQUEST_TYPE_LABELS[type]).join("·")} 신청`;
 
 /** The attendance status each kind is written as when a teacher records it. */
 export const REQUEST_TYPE_ATTENDANCE_STATUS: Record<EarlyDismissalRequestType, AttendanceStatus> = {
   early_dismissal: "early_leave",
   absence: "absent",
+  tardy: "late",
 };
 
-/** A leaving time and a same-day return only mean something when the child is at school first. */
+/** What the optional clock means for each kind, and null for the kind that has none: a 결석 covers
+ * the whole day, a 조퇴 records when the child leaves, a 지각 when they are expected to arrive.
+ * All of them share the one dismissal_time column. */
+export const REQUEST_TYPE_TIME_LABELS: Record<EarlyDismissalRequestType, string | null> = {
+  early_dismissal: "조퇴 시각",
+  absence: null,
+  tardy: "등교 예정 시각",
+};
+
+/** How the date and clock are introduced together in a notification. */
+export const REQUEST_TYPE_MOMENT_LABELS: Record<EarlyDismissalRequestType, string> = {
+  early_dismissal: "일시",
+  absence: "날짜",
+  tardy: "등교 예정",
+};
+
+/** Whether the kind carries a clock at all -- a whole-day 결석 does not. */
 export function usesDismissalTime(type: EarlyDismissalRequestType) {
+  return REQUEST_TYPE_TIME_LABELS[type] !== null;
+}
+
+export function timeFieldLabel(type: EarlyDismissalRequestType) {
+  return REQUEST_TYPE_TIME_LABELS[type];
+}
+
+export function momentLabel(type: EarlyDismissalRequestType) {
+  return REQUEST_TYPE_MOMENT_LABELS[type];
+}
+
+/** Only a 조퇴 sends a child home mid-day, so only a 조퇴 asks whether they come back. A 지각 has
+ * a clock but no return question: the child is arriving, not leaving. */
+export function usesReturnsSameDay(type: EarlyDismissalRequestType) {
   return type === "early_dismissal";
 }
 
