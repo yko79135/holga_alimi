@@ -2304,7 +2304,7 @@ h3 {
   }
 }
 
-/* Early dismissal (조퇴) and absence (결석) requests, and homeroom settings */
+/* Early dismissal (조퇴), tardiness (지각) and absence (결석) requests, and homeroom settings */
 .early-dismissal-row {
   display: grid;
   gap: 8px;
@@ -2330,6 +2330,10 @@ h3 {
 .tag.request-type-early_dismissal {
   background: var(--blue-100);
   color: var(--teal-800);
+}
+.tag.request-type-tardy {
+  background: var(--sand-100);
+  color: var(--warning);
 }
 .tag.request-type-absence {
   background: var(--danger-soft);

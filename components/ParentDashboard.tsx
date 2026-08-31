@@ -10,6 +10,7 @@ import ParentAttendanceStats from "@/components/parent/AttendanceStats";
 import ParentPointStats from "@/components/parent/PointStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
 import ParentEarlyDismissalRequests from "@/components/parent/EarlyDismissalRequests";
+import { REQUEST_TYPES_TAB_LABEL } from "@/lib/early-dismissal/types";
 
 const NOTICES_PER_PAGE = 10;
 
@@ -287,7 +288,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
             <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => setTab("attendance-stats")}>출석 통계</button>
             <button className={tab === "point-stats" ? "active" : ""} onClick={() => setTab("point-stats")}>점수 통계</button>
             <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => setTab("academic-calendar")}>학사일정</button>
-            <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => setTab("early-dismissal")}>조퇴·결석 신청</button>
+            <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => setTab("early-dismissal")}>{REQUEST_TYPES_TAB_LABEL}</button>
           </nav>
 
           {tab === "early-dismissal" && <ParentEarlyDismissalRequests userId={userId} students={students} />}
