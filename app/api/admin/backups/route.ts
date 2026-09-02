@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BACKUP_BUCKET, BACKUP_PREFIX, backupDateFromName, backupRetentionDays } from "@/lib/backup/storage";
+import { GoogleDriveError, driveFolderUrl, readDriveConfig } from "@/lib/backup/google-drive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,5 +38,16 @@ export async function GET() {
     downloadUrl: urlByPath.get(`${BACKUP_PREFIX}/${file.name}`) ?? null,
   }));
 
-  return NextResponse.json({ backups, retentionDays: backupRetentionDays() });
+  return NextResponse.json({ backups, retentionDays: backupRetentionDays(), googleDrive: describeDrive() });
+}
+
+/** 구글 드라이브 사본을 쓰도록 설정되어 있는지, 폴더를 직접 지정했다면 그 링크까지. */
+function describeDrive() {
+  try {
+    const config = readDriveConfig();
+    if (!config) return { status: "off" as const };
+    return { status: "on" as const, folderUrl: config.folderId ? driveFolderUrl(config.folderId) : null };
+  } catch (error) {
+    return { status: "misconfigured" as const, error: error instanceof GoogleDriveError ? error.message : "구글 드라이브 설정을 읽지 못했습니다." };
+  }
 }

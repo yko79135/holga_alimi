@@ -27,10 +27,19 @@ export async function GET(request: Request) {
 
   try {
     const result = await runDailyBackup();
-    return NextResponse.json({
-      message: `${result.date} 백업을 저장했습니다. (${result.rowCount.toLocaleString("ko-KR")}행)`,
-      ...result,
-    });
+    const rows = `${result.rowCount.toLocaleString("ko-KR")}행`;
+
+    // 드라이브 사본만 실패했으면 Storage 사본은 이미 남았지만, 조용히 성공으로 넘기면
+    // 두 곳에 저장되는 줄 알고 지나갑니다. 크론 로그와 화면 양쪽에서 실패로 보이게 합니다.
+    if (result.drive.status === "failed") {
+      return NextResponse.json(
+        { error: `Supabase에는 ${result.date} 백업을 저장했지만 구글 드라이브에 올리지 못했습니다. ${result.drive.error}`, ...result },
+        { status: 500 }
+      );
+    }
+
+    const where = result.drive.status === "saved" ? "Supabase와 구글 드라이브에" : "Supabase에";
+    return NextResponse.json({ message: `${result.date} 백업을 ${where} 저장했습니다. (${rows})`, ...result });
   } catch (error) {
     const message = error instanceof BackupRunError || error instanceof BackupExportError ? error.message : "백업에 실패했습니다.";
     console.error("daily backup failed", error);

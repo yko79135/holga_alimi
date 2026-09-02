@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { seoulDate } from "@/lib/backup/storage";
 
 type Backup = { name: string; date: string | null; sizeBytes: number | null; downloadUrl: string | null };
+type DriveStatus = { status: "off" | "on" | "misconfigured"; folderUrl?: string | null; error?: string };
 
 /** 서명 링크는 5분이면 만료되므로, 목록을 오래 열어 둔 뒤 눌렀을 때를 대비해 이 시간이 지나면
  * 목록을 다시 받아옵니다. */
@@ -27,6 +28,7 @@ function daysSince(date: string | null) {
 export default function BackupHistory() {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
+  const [drive, setDrive] = useState<DriveStatus>({ status: "off" });
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
@@ -39,6 +41,7 @@ export default function BackupHistory() {
       if (!response.ok) throw new Error(result.error || "백업 목록을 불러오지 못했습니다.");
       setBackups(result.backups || []);
       setRetentionDays(result.retentionDays || 30);
+      setDrive(result.googleDrive || { status: "off" });
       setError("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "백업 목록을 불러오지 못했습니다.");
@@ -62,6 +65,7 @@ export default function BackupHistory() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "백업에 실패했습니다.");
       setMessage(result.message || "백업을 저장했습니다.");
+      if (result.drive?.status === "saved" && result.drive.folderUrl) setDrive({ status: "on", folderUrl: result.drive.folderUrl });
       await load();
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : "백업에 실패했습니다.");
@@ -78,6 +82,11 @@ export default function BackupHistory() {
       <div className="account-actions">
         <button type="button" className="secondary" onClick={runNow} disabled={running}>{running ? "백업하는 중..." : "지금 백업하기"}</button>
       </div>
+      {drive.status === "on" && (
+        <p className="muted">구글 드라이브에도 같은 파일이 한 벌 더 저장됩니다.{drive.folderUrl && <> <a href={drive.folderUrl} target="_blank" rel="noreferrer">드라이브 폴더 열기</a></>}</p>
+      )}
+      {drive.status === "off" && <p className="muted">구글 드라이브 사본은 꺼져 있습니다. 백업이 Supabase 안에만 남습니다.</p>}
+      {drive.status === "misconfigured" && <p role="alert" className="form-error">{drive.error}</p>}
       {message && <p role="status" className="success-message">{message}</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
       {loading ? (
