@@ -111,8 +111,8 @@ export default function AttendanceStats({ role }: { role: string }) {
       {err && <p className="form-error">{err}</p>}
       {loading && <p className="muted">불러오는 중...</p>}
 
-      <div className="warning-grid-wrap">
-        <table className="warning-grid attendance-stats-grid">
+      <div className="warning-grid-wrap stat-cards-wrap">
+        <table className="warning-grid attendance-stats-grid stat-cards-grid">
           <thead>
             <tr>
               <th className="sticky grade">학년</th>
@@ -131,14 +131,14 @@ export default function AttendanceStats({ role }: { role: string }) {
                   <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => setExpandedId(isOpen ? null : row.id)}>
                     <td className="sticky grade"><b>{row.grade}</b></td>
                     <td className="sticky name">{row.name}</td>
-                    <td><b>{row.presentEstimate}</b></td>
-                    {ATTENDANCE_EXCEPTION_STATUSES.map((status) => <td key={status}>{row.semesterCounts[status]}</td>)}
-                    <td><b>{row.semesterTotal}</b></td>
-                    <td>{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
+                    <td data-label="출석"><b>{row.presentEstimate}</b></td>
+                    {ATTENDANCE_EXCEPTION_STATUSES.map((status) => <td key={status} data-label={ATTENDANCE_STATUS_LABELS[status]}>{row.semesterCounts[status]}</td>)}
+                    <td data-label="학기 합계"><b>{row.semesterTotal}</b></td>
+                    <td data-label="학부모">{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
                   </tr>
                   {isOpen && (
                     <tr className="attendance-stats-detail-row">
-                      <td colSpan={columnCount}>
+                      <td colSpan={columnCount} className="stat-cards-detail-cell">
                         {row.monthly.length ? (
                           <table className="attendance-stats-detail">
                             <thead>
