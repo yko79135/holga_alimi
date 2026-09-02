@@ -6,6 +6,7 @@ import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildCancellationNotice, withMeansParticle } from "@/lib/early-dismissal/format";
 import { recordEarlyDismissalAttendance, revertEarlyDismissalAttendance } from "@/lib/early-dismissal/attendance";
 import { isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
+import { isMissingRequestTypeError, warnRequestTypeMissing, withoutRequestType } from "@/lib/early-dismissal/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const action = String(body.action || "").trim();
 
   // The caller's own client reads the row, so RLS decides whether they may see it at all.
-  const rowRes = await supabase.from("early_dismissal_requests").select(ROW_SELECT).eq("id", id).maybeSingle<RequestRow>();
+  const rowQuery = (select: string) => supabase.from("early_dismissal_requests").select(select).eq("id", id).maybeSingle<RequestRow>();
+  let rowRes = await rowQuery(ROW_SELECT);
+  // Every row is 조퇴 on a database that has not been given request_type yet, and cancelling or
+  // recording one must keep working there.
+  if (isMissingRequestTypeError(rowRes.error)) {
+    warnRequestTypeMissing("row");
+    rowRes = await rowQuery(withoutRequestType(ROW_SELECT));
+  }
   if (rowRes.error || !rowRes.data) return NextResponse.json({ error: "신청 내역을 찾을 수 없습니다." }, { status: 404 });
   const row = rowRes.data;
   // Rows written before the other kinds existed carry no request_type; they were all 조퇴.
