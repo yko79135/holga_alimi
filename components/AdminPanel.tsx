@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compareGrades } from "@/lib/grade-sort";
 import HomeroomSettings from "@/components/early-dismissal/HomeroomSettings";
+import BackupHistory from "@/components/admin/BackupHistory";
 import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester, resetRecordsConfirmPhrase } from "@/lib/semester";
 
 type Role = "admin" | "teacher" | "parent";
@@ -489,6 +490,9 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
         </div>
         <p className="muted">학생, 학부모 연결, 공지, 훈계·칭찬 점수, 출결 내역 등 핵심 데이터를 JSON 파일 하나로 내려받습니다. 공지에 첨부된 PDF 원본은 포함되지 않고, 첨부파일 정보(파일명 등)만 포함됩니다. 민감한 개인정보가 포함되므로 다운로드한 파일은 안전하게 보관하세요.</p>
         <a className="secondary" href="/api/admin/data-export">백업 파일 다운로드</a>
+        <h3 className="backup-subheading">자동 백업</h3>
+        <p className="muted">같은 내용이 매일 새벽 3시(한국 시간)에 자동으로 저장됩니다. 아래에서 지난 날짜의 백업을 내려받을 수 있습니다.</p>
+        <BackupHistory />
       </section>
 
       <section className="content-card">
