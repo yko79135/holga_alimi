@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
+import { canSeeProfile } from "@/lib/admin/test-fixtures";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin();
@@ -26,6 +27,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const admin = createAdminClient();
+    if (!(await canSeeProfile(admin, targetUserId, auth.user.id))) return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
     const { data: target, error: targetError } = await admin.auth.admin.getUserById(targetUserId);
     if (targetError || !target.user) return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
 

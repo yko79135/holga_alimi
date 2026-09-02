@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles } from "@/lib/roles-server";
 import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildSubmissionNotice } from "@/lib/early-dismissal/format";
-import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
+import { MAX_CONTACT_LENGTH, MAX_NAME_LENGTH, MAX_REASON_LENGTH, REQUEST_TYPES_SUMMARY, isRequestType, requestTypeLabel, timeFieldLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 import { serializeRequestRow, REQUEST_SELECT } from "@/lib/early-dismissal/serialize";
 import { isMissingRequestTypeError, warnRequestTypeMissing, withoutRequestType } from "@/lib/early-dismissal/schema";
 
@@ -37,7 +37,7 @@ export async function GET() {
   }
   if (error) {
     console.error("early-dismissal-list-failed", { code: error.code, message: error.message });
-    return NextResponse.json({ error: "조퇴·결석 신청 목록을 불러오지 못했습니다." }, { status: 500 });
+    return NextResponse.json({ error: `${REQUEST_TYPES_SUMMARY} 신청 목록을 불러오지 못했습니다.` }, { status: 500 });
   }
 
   const rows = (data || []) as any[];
@@ -81,8 +81,8 @@ export async function GET() {
   return NextResponse.json({ requests, viewerId: user.id, isStaff });
 }
 
-/** A parent submits a 조퇴 or 결석 request for one of their own children. Every teacher and admin
- * is pushed a notification -- that notification is the whole workflow; nothing waits on an
+/** A parent submits a 조퇴, 지각, or 결석 request for one of their own children. Every teacher and
+ * admin is pushed a notification -- that notification is the whole workflow; nothing waits on an
  * approval. */
 export async function POST(req: Request) {
   const supabase = await createClient();
@@ -98,22 +98,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "입력값을 확인해 주세요." }, { status: 400 });
   }
 
-  // Requests submitted before 결석 existed carried no type at all, so an absent field means 조퇴.
+  // Requests submitted before the other kinds existed carried no type at all, so a missing field
+  // means 조퇴.
   if (body.type !== undefined && !isRequestType(body.type)) return NextResponse.json({ error: "신청 종류를 확인해 주세요." }, { status: 400 });
   const requestType: EarlyDismissalRequestType = isRequestType(body.type) ? body.type : "early_dismissal";
   const studentId = String(body.studentId || "").trim();
   const typeLabel = requestTypeLabel(requestType);
   const dismissalDate = String(body.dismissalDate || "").trim();
-  // A leaving time and a same-day return describe a 조퇴 only; on a 결석 the child is away all day.
+  // The clock means a leaving time on a 조퇴 and an expected arrival on a 지각; a 결석 covers the
+  // whole day and keeps none. A same-day return only ever describes a 조퇴.
   const dismissalTime = usesDismissalTime(requestType) ? String(body.dismissalTime || "").trim() : "";
   const reason = String(body.reason || "").trim();
   const guardianName = String(body.guardianName || "").trim().slice(0, MAX_NAME_LENGTH);
   const guardianContact = String(body.guardianContact || "").trim().slice(0, MAX_CONTACT_LENGTH);
-  const returnsSameDay = usesDismissalTime(requestType) && body.returnsSameDay === true;
+  const returnsSameDay = usesReturnsSameDay(requestType) && body.returnsSameDay === true;
 
   if (!studentId || !dismissalDate || !reason) return NextResponse.json({ error: `학생, ${typeLabel} 날짜, 사유를 입력해 주세요.` }, { status: 400 });
   if (!DATE_PATTERN.test(dismissalDate)) return NextResponse.json({ error: `${typeLabel} 날짜를 확인해 주세요.` }, { status: 400 });
-  if (dismissalTime && !TIME_PATTERN.test(dismissalTime)) return NextResponse.json({ error: "조퇴 시각을 확인해 주세요." }, { status: 400 });
+  if (dismissalTime && !TIME_PATTERN.test(dismissalTime)) return NextResponse.json({ error: `${timeFieldLabel(requestType)}을 확인해 주세요.` }, { status: 400 });
   if (reason.length > MAX_REASON_LENGTH) return NextResponse.json({ error: `사유는 ${MAX_REASON_LENGTH}자 이내로 입력해 주세요.` }, { status: 400 });
 
   // parent_students is also enforced by the insert policy; checking here turns a policy violation
@@ -122,7 +124,7 @@ export async function POST(req: Request) {
   const student = Array.isArray((linkRes.data as any)?.students) ? (linkRes.data as any).students[0] : (linkRes.data as any)?.students;
   if (linkRes.error || !student) return NextResponse.json({ error: `연결된 자녀만 ${typeLabel} 신청을 할 수 있습니다.` }, { status: 403 });
 
-  // One open request per child per day, whichever kind: 조퇴와 결석은 같은 날 함께 성립하지 않는다.
+  // One open request per child per day, whichever kind: 조퇴·지각·결석은 같은 날 함께 성립하지 않는다.
   const duplicateQuery = (select: string) =>
     supabase.from("early_dismissal_requests").select(select).eq("student_id", studentId).eq("dismissal_date", dismissalDate).is("cancelled_at", null).limit(1).maybeSingle();
   let duplicate: any = await duplicateQuery("id,request_type");
@@ -146,11 +148,11 @@ export async function POST(req: Request) {
   const insert = (values: Record<string, unknown>) => supabase.from("early_dismissal_requests").insert(values).select("id").single();
   let insertRes = await insert(row);
   // 조퇴 was accepted long before request_type existed, so a database that is one migration
-  // behind must still take it -- writing the column is the only thing 결석 added to this insert.
+  // behind must still take it -- writing the column is all the later kinds added to this insert.
   if (isMissingRequestTypeError(insertRes.error)) {
     warnRequestTypeMissing("insert");
-    if (requestType === "absence") {
-      return NextResponse.json({ error: "결석 신청은 아직 받을 수 없습니다. 조퇴로 신청하시거나 학교로 연락해 주세요." }, { status: 503 });
+    if (requestType !== "early_dismissal") {
+      return NextResponse.json({ error: `${typeLabel} 신청은 아직 받을 수 없습니다. 조퇴로 신청하시거나 학교로 연락해 주세요.` }, { status: 503 });
     }
     const { request_type: _unmigrated, ...legacyRow } = row;
     insertRes = await insert(legacyRow);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deleteNoticePermanently } from "@/lib/admin/delete-notice";
+import { canSeeStudent } from "@/lib/admin/test-fixtures";
 
 function validUuid(value: string) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 async function preview(studentId: string) {
@@ -20,6 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const auth = await requireAdmin(); if ("error" in auth) return auth.error;
   const { id } = await params; const studentId = String(id || "").trim();
   if (!validUuid(studentId)) return adminJsonError("학생 ID를 확인해주세요.", 400);
+  if (!(await canSeeStudent(createAdminClient(), studentId, auth.user.id))) return adminJsonError("학생을 찾을 수 없습니다.", 404);
   try { const p = await preview(studentId); return NextResponse.json({ name: p.student.name, grade: p.student.grade, parentLinkCount: p.parentLinkCount, individualNoticeCount: p.individualNoticeCount }); }
   catch (error) { if (error instanceof Error && error.message === "STUDENT_NOT_FOUND") return adminJsonError("학생을 찾을 수 없습니다.", 404); return adminJsonError("삭제 영향을 확인하지 못했습니다.", 500); }
 }
@@ -33,6 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const grade = String(body.grade || "").trim();
   if (!name || !grade) return adminJsonError("이름과 학년을 입력해주세요.", 400);
   const admin = createAdminClient();
+  if (!(await canSeeStudent(admin, studentId, auth.user.id))) return adminJsonError("학생을 찾을 수 없습니다.", 404);
   const { data, error } = await admin.from("students").update({ name, grade }).eq("id", studentId).select("id,name,grade,homeroom,active").single();
   if (error || !data) return adminJsonError("학생을 찾을 수 없습니다.", 404);
   return NextResponse.json({ student: data });
@@ -44,6 +47,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!validUuid(studentId)) return adminJsonError("학생 ID를 확인해주세요.", 400);
   try {
     const admin = createAdminClient();
+    if (!(await canSeeStudent(admin, studentId, auth.user.id))) return adminJsonError("학생을 찾을 수 없습니다.", 404);
     const { data: student, error: studentError } = await admin.from("students").select("id,name").eq("id", studentId).single();
     if (studentError || !student) return adminJsonError("학생을 찾을 수 없습니다.", 404);
     const { data: links, error: linksError } = await admin.from("notice_students").select("notice_id,notices!inner(target_scope)").eq("student_id", studentId).eq("notices.target_scope", "student");

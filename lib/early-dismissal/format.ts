@@ -1,4 +1,4 @@
-import { requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "./types";
+import { momentLabel, requestTypeLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequestType } from "./types";
 
 type RequestSummary = {
   type: EarlyDismissalRequestType;
@@ -35,29 +35,26 @@ export function withObjectParticle(word: string) {
   return `${word}${finalConsonant(word) > 0 ? "을" : "를"}`;
 }
 
-/** 조퇴가 / 결석이 -- the subject particle follows the last syllable's final consonant. */
-export function withSubjectParticle(word: string) {
-  return `${word}${finalConsonant(word) > 0 ? "이" : "가"}`;
-}
-
 /** 조퇴로 / 결석으로 -- 으 is dropped after a vowel and after ㄹ (final consonant 8). */
 export function withMeansParticle(word: string) {
   const final = finalConsonant(word);
   return `${word}${final > 0 && final !== 8 ? "으로" : "로"}`;
 }
 
-/** Staff-facing push text for a newly submitted request. */
+/** Staff-facing push text for a newly submitted request. The clock line is introduced by what the
+ * clock means for that kind -- 조퇴 일시, 지각 등교 예정 -- and falls back to a plain 날짜 when the
+ * request carries no clock at all. */
 export function buildSubmissionNotice(request: RequestSummary, parentName: string, homeroomTeacherName: string) {
   const label = requestTypeLabel(request.type);
-  const timed = usesDismissalTime(request.type);
+  const clock = usesDismissalTime(request.type) ? formatDismissalTime(request.dismissalTime) : null;
   return {
     title: `[${label} 신청] ${request.studentGrade} ${request.studentName}`,
     body: [
       `${parentName} 학부모님이 ${withObjectParticle(label)} 신청했습니다.`,
-      timed ? `일시: ${formatDismissalMoment(request.dismissalDate, request.dismissalTime)}` : `날짜: ${request.dismissalDate}`,
+      clock ? `${momentLabel(request.type)}: ${request.dismissalDate} ${clock}` : `날짜: ${request.dismissalDate}`,
       homeroomTeacherName ? `홈룸: ${homeroomTeacherName} 선생님` : null,
       request.guardianName ? `인솔자: ${request.guardianName}` : null,
-      timed && request.returnsSameDay ? "당일 복귀 예정입니다." : null,
+      usesReturnsSameDay(request.type) && request.returnsSameDay ? "당일 복귀 예정입니다." : null,
       `사유: ${request.reason}`,
     ].filter(Boolean).join("\n"),
   };

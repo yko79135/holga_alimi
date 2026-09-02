@@ -349,7 +349,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
             </select>
           </label>
           <label>점수
-            <input type="number" min={1} max={kind === "discipline" ? MAX_DISCIPLINE_POINT_VALUE : undefined} step={1} value={points} onChange={(e) => setPoints(e.target.value)} />
+            <input type="number" min={1} max={kind === "discipline" ? MAX_DISCIPLINE_POINT_VALUE : undefined} step={1} value={points} onChange={(e) => setPoints(e.target.value)} onWheel={(e) => e.currentTarget.blur()} />
           </label>
         </div>
 

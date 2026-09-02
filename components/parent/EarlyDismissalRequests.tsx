@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { formatDismissalMoment, withMeansParticle, withSubjectParticle } from "@/lib/early-dismissal/format";
-import { MAX_REASON_LENGTH, REQUEST_TYPES, REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
+import { formatDismissalMoment, withMeansParticle, withObjectParticle } from "@/lib/early-dismissal/format";
+import { MAX_REASON_LENGTH, REQUEST_TYPES, REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, timeFieldLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 
 type Student = { id: string; name: string; grade: string };
 
@@ -23,8 +23,10 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
   const [error, setError] = useState("");
   const [form, setForm] = useState({ type: "early_dismissal" as EarlyDismissalRequestType, studentId: "", dismissalDate: todayValue(), dismissalTime: "", reason: "", guardianName: "", guardianContact: "", returnsSameDay: false });
   const typeLabel = REQUEST_TYPE_LABELS[form.type];
-  // 조퇴 asks when the child leaves and whether they come back; a 결석 covers the whole day.
-  const timed = usesDismissalTime(form.type);
+  // 조퇴 asks when the child leaves, 지각 when they expect to arrive; a 결석 covers the whole day
+  // and asks neither. Only a 조퇴 sends the child home mid-day, so only it asks about returning.
+  const clockLabel = timeFieldLabel(form.type);
+  const asksReturn = usesReturnsSameDay(form.type);
 
   const load = useCallback(async () => {
     try {
@@ -94,9 +96,9 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
     <section className="content-card">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">EARLY DISMISSAL</p>
-          <h2>조퇴 · 결석 신청</h2>
-          <p className="muted">신청하면 모든 선생님께 알림이 전달됩니다. 별도의 승인 절차는 없으며, 선생님이 확인 후 출석부에 조퇴 또는 결석으로 기록합니다.</p>
+          <p className="eyebrow">ATTENDANCE REQUESTS</p>
+          <h2>{REQUEST_TYPES_SUMMARY} 신청</h2>
+          <p className="muted">신청하면 모든 선생님께 알림이 전달됩니다. 별도의 승인 절차는 없으며, 선생님이 확인 후 출석부에 신청한 종류대로 기록합니다.</p>
         </div>
       </div>
 
@@ -110,7 +112,8 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
               role="radio"
               aria-checked={form.type === value}
               className={form.type === value ? "filter active" : "filter"}
-              // A 결석 has no leaving time and no same-day return, so switching drops both.
+              // Each kind means something different by its clock, and only a 조퇴 returns the
+              // same day, so switching kinds clears both rather than carrying them over.
               onClick={() => setForm({ ...form, type: value, dismissalTime: "", returnsSameDay: false })}
             >
               {REQUEST_TYPE_LABELS[value]}
@@ -129,9 +132,9 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
             <label htmlFor="early-dismissal-date">{typeLabel} 날짜</label>
             <input id="early-dismissal-date" type="date" value={form.dismissalDate} onChange={(event) => setForm({ ...form, dismissalDate: event.target.value })} required />
           </div>
-          {timed && (
+          {clockLabel && (
             <div>
-              <label htmlFor="early-dismissal-time">조퇴 시각 (선택)</label>
+              <label htmlFor="early-dismissal-time">{clockLabel} (선택)</label>
               <input id="early-dismissal-time" type="time" value={form.dismissalTime} onChange={(event) => setForm({ ...form, dismissalTime: event.target.value })} />
             </div>
           )}
@@ -145,7 +148,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
             <label htmlFor="early-dismissal-contact">연락처 (선택)</label>
             <input id="early-dismissal-contact" value={form.guardianContact} onChange={(event) => setForm({ ...form, guardianContact: event.target.value })} placeholder="010-0000-0000" />
           </div>
-          {timed && (
+          {asksReturn && (
             <div>
               <label>당일 복귀</label>
               <label className="switch-line" htmlFor="early-dismissal-return">
@@ -156,7 +159,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
           )}
         </div>
         <label htmlFor="early-dismissal-reason">{typeLabel} 사유</label>
-        <textarea id="early-dismissal-reason" value={form.reason} maxLength={MAX_REASON_LENGTH} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder={`병원 진료, 가정 사정 등 ${withSubjectParticle(typeLabel)} 필요한 사유를 적어주세요.`} required />
+        <textarea id="early-dismissal-reason" value={form.reason} maxLength={MAX_REASON_LENGTH} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder={`병원 진료, 가정 사정 등 ${withObjectParticle(typeLabel)} 신청하는 사유를 적어주세요.`} required />
         <button className="primary" type="submit" disabled={submitting || !students.length}>{submitting ? "신청 중..." : `${typeLabel} 신청하기`}</button>
         {message && <p className="success-message">{message}</p>}
         {error && <p className="form-error">{error}</p>}
@@ -186,7 +189,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
             )}
           </article>
         ))}
-        {!loading && !requests.length && <div className="empty-state">아직 조퇴·결석 신청 내역이 없습니다.</div>}
+        {!loading && !requests.length && <div className="empty-state">아직 {REQUEST_TYPES_SUMMARY} 신청 내역이 없습니다.</div>}
       </div>
     </section>
   );

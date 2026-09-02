@@ -22,6 +22,8 @@ type AccountSummary = {
   roles: Role[];
   status: Status;
   createdAt: string | null;
+  /** 나에게만 보이는 테스트용 계정. 다른 관리자·교사의 목록에는 아예 나오지 않습니다. */
+  isTestAccount?: boolean;
   linkedStudents?: Student[];
 };
 type CreatedAccount = AccountSummary;
@@ -386,7 +388,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             return (
               <article className="account-card" key={account.id}>
                 <div>
-                  <strong>{account.fullName || "이름 없음"}</strong>
+                  <strong>{account.fullName || "이름 없음"}{account.isTestAccount ? <span className="test-badge">테스트</span> : null}</strong>
                   <small>{account.email}</small>
                   <span>{(account.roles?.length ? account.roles : account.role ? [account.role] : []).map((r) => <span className={`role-badge role-${r}`} key={r}>{roleLabels[r]}</span>)}</span>
                   <small>{statusLabels[account.status]}</small>

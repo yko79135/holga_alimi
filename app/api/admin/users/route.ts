@@ -3,6 +3,8 @@ import type { User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { APP_ROLES, type AppRole, isAppRole, normalizeRoles } from "@/lib/roles";
+import { isTestRow, isTestRowVisible, visibleTestRowsFilter } from "@/lib/test-data";
+import { canSeeProfile } from "@/lib/admin/test-fixtures";
 
 type AccountStatus = "active" | "missing_profile" | "missing_role" | "unconfirmed_email" | "inconsistent";
 
@@ -17,10 +19,11 @@ const ACCOUNT_LIST_SELECT = `
     phone,
     role,
     created_at,
+    test_owner_id,
     ${PROFILE_ROLES_RELATION},
     parent_students(
       student_id,
-      students(id,name,grade)
+      students(id,name,grade,test_owner_id)
     )
   `;
 
@@ -31,6 +34,7 @@ type ProfileRow = {
   phone: string | null;
   role: string | null;
   created_at: string | null;
+  test_owner_id?: string | null;
 };
 
 const VALID_ROLES: AppRole[] = APP_ROLES;
@@ -95,7 +99,7 @@ function verifyProfile(profile: ProfileRow | null, userId: string, email: string
   return Boolean(profile && profile.id === userId && (profile.email || "").toLowerCase() === email.toLowerCase() && profile.role === role);
 }
 
-function buildSummary(authUser: User, profile?: ProfileRow) {
+function buildSummary(authUser: User, profile: ProfileRow | undefined, viewerId: string) {
   const validRole = profile?.role && isRole(profile.role) ? profile.role : null;
   let status: AccountStatus = "active";
 
@@ -116,7 +120,10 @@ function buildSummary(authUser: User, profile?: ProfileRow) {
     roles: Array.isArray((profile as any)?.profile_roles) ? normalizeRoles((profile as any).profile_roles.map((r: any) => r.role)) : validRole ? [validRole] : [],
     status,
     createdAt: profile?.created_at || authUser.created_at || null,
-    linkedStudents: Array.isArray((profile as any)?.parent_students) ? (profile as any).parent_students.map((link: any) => link.students).filter(Boolean) : [],
+    isTestAccount: isTestRow(profile),
+    linkedStudents: Array.isArray((profile as any)?.parent_students)
+      ? (profile as any).parent_students.map((link: any) => link.students).filter(Boolean).filter((student: any) => isTestRowVisible(student, viewerId))
+      : [],
   };
 }
 
@@ -179,8 +186,11 @@ export async function GET() {
     }
 
     const profileMap = new Map((profiles as ProfileRow[]).map((profile) => [profile.id, profile]));
-    if (process.env.NODE_ENV !== "production") console.debug("admin-account-list", { durationMs: Math.round(performance.now() - start), count: authUsers.length });
-    return NextResponse.json({ accounts: authUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id))) });
+    // 남의 더미 계정은 이 관리자에게 존재하지 않는 것과 같습니다. RLS를 지나가지 않는
+    // service_role 조회이므로 여기서 직접 걸러냅니다.
+    const visibleUsers = authUsers.filter((authUser) => isTestRowVisible(profileMap.get(authUser.id), auth.user.id));
+    if (process.env.NODE_ENV !== "production") console.debug("admin-account-list", { durationMs: Math.round(performance.now() - start), count: visibleUsers.length });
+    return NextResponse.json({ accounts: visibleUsers.map((authUser) => buildSummary(authUser, profileMap.get(authUser.id), auth.user.id)) });
   } catch (error) {
     logSupabaseError("Failed to list admin accounts", error);
     return accountListError("계정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", "ACCOUNT_LIST_FAILED");
@@ -208,7 +218,7 @@ export async function POST(request: Request) {
     if (!requestedRoles.length) return adminJsonError("하나 이상의 권한을 선택해주세요.", 400);
     const admin = createAdminClient();
     if (requestedRoles.includes("parent") && studentIds.length > 0) {
-      const { data: students, error: studentError } = await admin.from("students").select("id").in("id", studentIds);
+      const { data: students, error: studentError } = await admin.from("students").select("id").in("id", studentIds).or(visibleTestRowsFilter(auth.user.id));
       if (studentError || (students || []).length !== studentIds.length) return adminJsonError("연결할 학생 정보를 확인해주세요.", 400);
     }
 
@@ -234,7 +244,7 @@ export async function POST(request: Request) {
     }
 
     const { data: summaryProfile } = await admin.from("profiles").select(ACCOUNT_LIST_SELECT).eq("id", newUserId).single();
-    return NextResponse.json({ account: buildSummary(created.user, (summaryProfile || profile) as ProfileRow) });
+    return NextResponse.json({ account: buildSummary(created.user, (summaryProfile || profile) as ProfileRow, auth.user.id) });
   } catch (error) {
     safeLog("Admin account creation failed", { message: error instanceof Error ? error.message : "unknown", newUserId });
     if (newUserId) {
@@ -269,6 +279,7 @@ export async function PATCH(request: Request) {
       if (countError || (count || 0) <= 1) return adminJsonError("마지막 관리자 계정의 관리자 권한은 제거할 수 없습니다.", 400);
     }
 
+    if (!(await canSeeProfile(admin, userId, auth.user.id))) return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
     const { data: target, error: targetError } = await admin.auth.admin.getUserById(userId);
     if (targetError || !target.user?.email) return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
 

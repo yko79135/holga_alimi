@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { canSeeProfile } from "@/lib/admin/test-fixtures";
 
 function validUuid(value: string) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 
@@ -11,6 +12,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (targetUserId === auth.user.id) return adminJsonError("현재 로그인한 관리자 계정은 삭제할 수 없습니다.", 400);
   try {
     const admin = createAdminClient();
+    if (!(await canSeeProfile(admin, targetUserId, auth.user.id))) return adminJsonError("대상 Auth 사용자를 찾을 수 없습니다.", 404);
     const { data: target, error: targetError } = await admin.auth.admin.getUserById(targetUserId);
     const { data: profile } = await admin.from("profiles").select("id,email,full_name,role").eq("id", targetUserId).maybeSingle();
     if (targetError || !target.user) {

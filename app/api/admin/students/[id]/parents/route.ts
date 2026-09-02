@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminJsonError, requireAdmin } from "@/lib/admin/require-admin";
+import { canSeeProfile, canSeeStudent } from "@/lib/admin/test-fixtures";
+import { isTestRowVisible } from "@/lib/test-data";
 
 type Params = { params: Promise<{ id: string }> };
 
 type LinkRow = {
   parent_id: string;
   student_id: string;
-  profiles: { id: string; full_name: string | null; email: string | null } | null;
+  profiles: { id: string; full_name: string | null; email: string | null; test_owner_id?: string | null } | null;
 };
 
 type ParentStudentRow = {
   parent_id: string;
-  students: { id: string; name: string; grade: string } | null;
+  students: { id: string; name: string; grade: string; test_owner_id?: string | null } | null;
 };
 
 async function getStudentId(context: Params) {
@@ -28,29 +30,31 @@ export async function GET(_request: Request, context: Params) {
 
   const admin = createAdminClient();
   const { data: student } = await admin.from("students").select("id").eq("id", studentId).maybeSingle();
-  if (!student) return adminJsonError("학생을 찾을 수 없습니다.", 404);
+  if (!student || !(await canSeeStudent(admin, studentId, auth.user.id))) return adminJsonError("학생을 찾을 수 없습니다.", 404);
 
   const { data: links, error } = await admin
     .from("parent_students")
-    .select("parent_id,student_id,profiles(id,full_name,email)")
+    .select("parent_id,student_id,profiles(id,full_name,email,test_owner_id)")
     .eq("student_id", studentId)
     .order("created_at", { ascending: true });
   if (error) return adminJsonError("학부모 연결 정보를 불러오지 못했습니다.", 500);
 
-  const parentIds = (links || []).map((link) => link.parent_id);
+  // 남의 더미 학부모가 붙어 있어도 이 관리자에게는 보이지 않아야 합니다.
+  const visibleLinks = ((links || []) as unknown as LinkRow[]).filter((link) => isTestRowVisible(link.profiles, auth.user.id));
+  const parentIds = visibleLinks.map((link) => link.parent_id);
   const { data: siblingLinks, error: siblingError } = parentIds.length
-    ? await admin.from("parent_students").select("parent_id,students(id,name,grade)").in("parent_id", parentIds)
+    ? await admin.from("parent_students").select("parent_id,students(id,name,grade,test_owner_id)").in("parent_id", parentIds)
     : { data: [], error: null };
   if (siblingError) return adminJsonError("연결된 학생 정보를 불러오지 못했습니다.", 500);
 
   const studentsByParent = new Map<string, Array<{ id: string; name: string; grade: string }>>();
   for (const row of (siblingLinks || []) as unknown as ParentStudentRow[]) {
-    if (!row.students) continue;
+    if (!row.students || !isTestRowVisible(row.students, auth.user.id)) continue;
     studentsByParent.set(row.parent_id, [...(studentsByParent.get(row.parent_id) || []), row.students]);
   }
 
   return NextResponse.json({
-    linkedParents: ((links || []) as unknown as LinkRow[]).map((link) => ({
+    linkedParents: visibleLinks.map((link) => ({
       parentId: link.parent_id,
       fullName: link.profiles?.full_name || "",
       email: link.profiles?.email || "",
@@ -72,8 +76,8 @@ export async function POST(request: Request, context: Params) {
     admin.from("students").select("id").eq("id", studentId).maybeSingle(),
     admin.from("profile_roles").select("profile_id").eq("profile_id", normalizedParentId).eq("role", "parent").maybeSingle(),
   ]);
-  if (!student) return adminJsonError("학생을 찾을 수 없습니다.", 404);
-  if (!parent) return adminJsonError("학부모 계정을 찾을 수 없습니다.", 404);
+  if (!student || !(await canSeeStudent(admin, studentId, auth.user.id))) return adminJsonError("학생을 찾을 수 없습니다.", 404);
+  if (!parent || !(await canSeeProfile(admin, normalizedParentId, auth.user.id))) return adminJsonError("학부모 계정을 찾을 수 없습니다.", 404);
 
   const { error } = await admin.from("parent_students").insert({ parent_id: normalizedParentId, student_id: studentId });
   if (error) {
@@ -91,6 +95,7 @@ export async function DELETE(request: Request, context: Params) {
   if (!studentId || !parentId) return adminJsonError("학생과 학부모 계정을 선택해주세요.", 400);
 
   const admin = createAdminClient();
+  if (!(await canSeeStudent(admin, studentId, auth.user.id)) || !(await canSeeProfile(admin, parentId, auth.user.id))) return adminJsonError("이미 삭제되었거나 연결을 찾을 수 없습니다.", 404);
   const { error, count } = await admin
     .from("parent_students")
     .delete({ count: "exact" })

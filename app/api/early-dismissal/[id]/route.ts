@@ -55,7 +55,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   if (rowRes.error || !rowRes.data) return NextResponse.json({ error: "신청 내역을 찾을 수 없습니다." }, { status: 404 });
   const row = rowRes.data;
-  // Rows written before 결석 신청 existed carry no request_type; they were all 조퇴.
+  // Rows written before the other kinds existed carry no request_type; they were all 조퇴.
   const requestType: EarlyDismissalRequestType = isRequestType(row.request_type) ? row.request_type : "early_dismissal";
   const typeLabel = requestTypeLabel(requestType);
   const studentValue = Array.isArray(row.students) ? row.students[0] : row.students;
@@ -98,7 +98,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // Any teacher can put the request on the attendance sheet -- there is no approver any more, so
   // whoever handles the student that day records it. The request's own kind decides whether the
-  // day is written as 조퇴 or 결석. The attendance write itself goes through the
+  // day is written as 조퇴, 지각, or 결석. The attendance write itself goes through the
   // teacher's own client, so attendance_entries' RLS still applies and the entry has a real author.
   if (action === "record") {
     if (row.cancelled_at) return NextResponse.json({ error: "취소된 신청입니다." }, { status: 409 });
