@@ -134,13 +134,13 @@ function PointHistoryTable({
                 if (isEditing && draft) {
                   return (
                     <tr key={entry.id} className="point-history-editing">
-                      <td><input type="number" step={1} value={draft.points} onChange={(e) => onDraftChange({ points: e.target.value })} aria-label="적용 점수" /></td>
-                      <td>
+                      <td data-label="적용 점수"><input type="number" step={1} value={draft.points} onChange={(e) => onDraftChange({ points: e.target.value })} aria-label="적용 점수" /></td>
+                      <td data-label="날짜">
                         {entry.entry_type === "daily"
                           ? <input type="date" value={draft.date} onChange={(e) => onDraftChange({ date: e.target.value })} aria-label="날짜" />
                           : entryDateLabel(entry)}
                       </td>
-                      <td>
+                      <td data-label="수업">
                         <select value={draft.classPeriodId} onChange={(e) => onDraftChange({ classPeriodId: e.target.value })} aria-label="수업">
                           <option value="">수업 없음</option>
                           {classPeriods.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}
@@ -149,9 +149,9 @@ function PointHistoryTable({
                           )}
                         </select>
                       </td>
-                      <td><input type="text" value={draft.reason} onChange={(e) => onDraftChange({ reason: e.target.value })} placeholder="사유" aria-label="사유" /></td>
-                      <td><b>{total}점</b></td>
-                      <td>
+                      <td data-label="사유"><input type="text" value={draft.reason} onChange={(e) => onDraftChange({ reason: e.target.value })} placeholder="사유" aria-label="사유" /></td>
+                      <td data-label="총 점수"><b>{total}점</b></td>
+                      <td className="point-history-manage">
                         <div className="point-history-actions">
                           <button type="button" className="primary" onClick={() => onSaveEdit(entry)} disabled={isSaving}>{isSaving ? "저장 중..." : "저장"}</button>
                           <button type="button" className="secondary" onClick={onCancelEdit} disabled={isSaving}>취소</button>
@@ -162,12 +162,12 @@ function PointHistoryTable({
                 }
                 return (
                   <tr key={entry.id}>
-                    <td>{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</td>
-                    <td>{entryDateLabel(entry)}</td>
-                    <td>{entry.class_periods?.name || "-"}</td>
-                    <td>{entry.parent_visible_reason || entry.category || "사유 없음"}</td>
-                    <td><b>{total}점</b></td>
-                    <td>
+                    <td data-label="적용 점수">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</td>
+                    <td data-label="날짜">{entryDateLabel(entry)}</td>
+                    <td data-label="수업">{entry.class_periods?.name || "-"}</td>
+                    <td data-label="사유">{entry.parent_visible_reason || entry.category || "사유 없음"}</td>
+                    <td data-label="총 점수"><b>{total}점</b></td>
+                    <td className="point-history-manage">
                       <div className="point-history-actions">
                         {editable
                           ? <button type="button" className="secondary" onClick={() => onStartEdit(entry)} disabled={!!editingId}>수정</button>
@@ -384,8 +384,8 @@ export default function PointStats({ role }: { role: string }) {
       {err && <p className="form-error">{err}</p>}
       {loading && <p className="muted">불러오는 중...</p>}
 
-      <div className="warning-grid-wrap">
-        <table className="warning-grid">
+      <div className="warning-grid-wrap point-stats-wrap">
+        <table className="warning-grid point-stats-grid">
           <thead>
             <tr>
               <th className="sticky grade">학년</th>
@@ -414,9 +414,9 @@ export default function PointStats({ role }: { role: string }) {
                   <tr className="attendance-stats-row" aria-expanded={isOpen} onClick={() => toggleStudentRow(row.id)}>
                     <td className="sticky grade"><b>{row.grade}</b></td>
                     <td className="sticky name">{row.name}</td>
-                    <td><b>{disciplineNow}점</b></td>
-                    <td><b>{praiseNow}점</b></td>
-                    <td className="grace-cell" onClick={(e) => e.stopPropagation()}>
+                    <td data-label="훈계 점수"><b>{disciplineNow}점</b></td>
+                    <td data-label="칭찬 점수"><b>{praiseNow}점</b></td>
+                    <td className="grace-cell" data-label="희월" onClick={(e) => e.stopPropagation()}>
                       <div className="grace-stepper">
                         <div className="grace-stepper-value">
                           <b>{row.graceTotal || 0}점</b>
@@ -430,12 +430,12 @@ export default function PointStats({ role }: { role: string }) {
                         {message && <p className={message.type === "success" ? "success-message" : "form-error"}>{message.text}</p>}
                       </div>
                     </td>
-                    <td>{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
-                    <td>{isOpen ? "닫기" : "월별 보기"}</td>
+                    <td data-label="학부모">{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
+                    <td className="point-stats-toggle">{isOpen ? "닫기" : "월별 보기"}</td>
                   </tr>
                   {isOpen && (
                     <tr className="attendance-stats-detail-row">
-                      <td colSpan={columnCount}>
+                      <td colSpan={columnCount} className="point-stats-detail-cell">
                         {monthly.length ? (
                           <table className="attendance-stats-detail">
                             <thead><tr><th>월</th><th>훈계 점수</th><th>칭찬 점수</th></tr></thead>
