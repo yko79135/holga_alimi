@@ -384,8 +384,8 @@ export default function PointStats({ role }: { role: string }) {
       {err && <p className="form-error">{err}</p>}
       {loading && <p className="muted">불러오는 중...</p>}
 
-      <div className="warning-grid-wrap point-stats-wrap">
-        <table className="warning-grid point-stats-grid">
+      <div className="warning-grid-wrap stat-cards-wrap">
+        <table className="warning-grid stat-cards-grid">
           <thead>
             <tr>
               <th className="sticky grade">학년</th>
@@ -431,11 +431,11 @@ export default function PointStats({ role }: { role: string }) {
                       </div>
                     </td>
                     <td data-label="학부모">{row.parentCount ? `${row.parentCount}명` : "연결 없음"}</td>
-                    <td className="point-stats-toggle">{isOpen ? "닫기" : "월별 보기"}</td>
+                    <td className="stat-cards-toggle">{isOpen ? "닫기" : "월별 보기"}</td>
                   </tr>
                   {isOpen && (
                     <tr className="attendance-stats-detail-row">
-                      <td colSpan={columnCount} className="point-stats-detail-cell">
+                      <td colSpan={columnCount} className="stat-cards-detail-cell">
                         {monthly.length ? (
                           <table className="attendance-stats-detail">
                             <thead><tr><th>월</th><th>훈계 점수</th><th>칭찬 점수</th></tr></thead>

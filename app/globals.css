@@ -1649,41 +1649,41 @@ h3 {
   font-size: 12px;
   font-weight: 900;
 }
-/* 모바일에서는 점수 통계 표를 학생별 카드 목록으로 바꿔 가로 스크롤 없이 보이게 한다 */
+/* 모바일에서는 통계 표(점수·출석)를 학생별 카드 목록으로 바꿔 가로 스크롤 없이 보이게 한다 */
 @media (max-width: 700px) {
-  .point-stats-wrap {
+  .stat-cards-wrap {
     overflow: visible;
     border: 0;
     border-radius: 0;
     background: transparent;
   }
-  .point-stats-grid {
+  .stat-cards-grid {
     display: block;
     width: 100%;
     min-width: 0;
   }
-  .point-stats-grid > thead {
+  .stat-cards-grid > thead {
     display: none;
   }
-  .point-stats-grid > tbody,
-  .point-stats-grid > tbody > tr {
+  .stat-cards-grid > tbody,
+  .stat-cards-grid > tbody > tr {
     display: block;
   }
-  .point-stats-grid > tbody > tr > td {
+  .stat-cards-grid > tbody > tr > td {
     display: block;
     padding: 0;
     border: 0;
     text-align: left;
     background: transparent;
   }
-  .point-stats-grid > tbody > tr > td.sticky {
+  .stat-cards-grid > tbody > tr > td.sticky {
     position: static;
     left: auto;
     min-width: 0;
   }
-  .point-stats-grid > tbody > tr.attendance-stats-row {
-    display: grid;
-    grid-template-columns: max-content 1fr max-content;
+  .stat-cards-grid > tbody > tr.attendance-stats-row {
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     column-gap: 10px;
     margin-bottom: 10px;
@@ -1693,11 +1693,18 @@ h3 {
     background: var(--white);
     box-shadow: var(--shadow-sm);
   }
-  .point-stats-grid > tbody > tr.attendance-stats-row:hover > td,
-  .point-stats-grid > tbody > tr.attendance-stats-row[aria-expanded="true"] > td {
+  /* 학년·이름 줄 다음에서 항목들이 새 줄로 내려가게 하는 줄바꿈 */
+  .stat-cards-grid > tbody > tr.attendance-stats-row::after {
+    content: "";
+    order: 3;
+    flex: 0 0 100%;
+    height: 0;
+  }
+  .stat-cards-grid > tbody > tr.attendance-stats-row:hover > td,
+  .stat-cards-grid > tbody > tr.attendance-stats-row[aria-expanded="true"] > td {
     background: transparent;
   }
-  .point-stats-grid > tbody > tr.attendance-stats-row[aria-expanded="true"] {
+  .stat-cards-grid > tbody > tr.attendance-stats-row[aria-expanded="true"] {
     margin-bottom: 0;
     border-color: var(--teal-600);
     border-bottom-color: var(--line);
@@ -1705,23 +1712,31 @@ h3 {
     border-bottom-right-radius: 0;
     box-shadow: none;
   }
-  .point-stats-grid > tbody > tr > td.grade {
-    grid-area: 1 / 1;
+  .stat-cards-grid > tbody > tr > td.grade {
+    order: 1;
+    flex: 0 0 auto;
     padding: 3px 9px;
     border-radius: 999px;
     background: var(--mint-100);
     font-size: 12px;
     color: var(--teal-900);
   }
-  .point-stats-grid > tbody > tr > td.name {
-    grid-area: 1 / 2;
+  .stat-cards-grid > tbody > tr > td.name {
+    order: 2;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     background: transparent;
     font-size: 16px;
     font-weight: 900;
     color: var(--teal-900);
   }
-  .point-stats-grid > tbody > tr > td.point-stats-toggle {
-    grid-area: 1 / 3;
+  .stat-cards-grid > tbody > tr > td.stat-cards-toggle {
+    order: 2;
+    flex: 0 0 auto;
+    margin-left: auto;
     padding: 6px 0 6px 8px;
     text-align: right;
     font-size: 12px;
@@ -1729,8 +1744,20 @@ h3 {
     color: var(--teal-700);
     white-space: nowrap;
   }
-  .point-stats-grid > tbody > tr > td[data-label] {
-    grid-column: 1 / -1;
+  /* 출석 통계에는 펼침 표시용 칸이 따로 없어 이름 칸에 붙여 준다 */
+  .attendance-stats-grid > tbody > tr.attendance-stats-row > td.name::after {
+    content: "월별 보기";
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 900;
+    color: var(--teal-700);
+  }
+  .attendance-stats-grid > tbody > tr.attendance-stats-row[aria-expanded="true"] > td.name::after {
+    content: "닫기";
+  }
+  .stat-cards-grid > tbody > tr > td[data-label] {
+    order: 4;
+    flex: 1 1 100%;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1739,31 +1766,51 @@ h3 {
     padding: 8px 0;
     border-top: 1px solid var(--line);
   }
-  .point-stats-grid > tbody > tr > td[data-label]::before {
+  .stat-cards-grid > tbody > tr > td[data-label]::before {
     content: attr(data-label);
     flex: 0 0 auto;
     font-size: 12px;
     font-weight: 800;
     color: var(--muted);
   }
-  .point-stats-grid > tbody > tr > td.grace-cell {
+  /* 출석 통계는 항목이 여덟 개라 두 개씩 나란히 놓아 카드 높이를 줄인다 */
+  .attendance-stats-grid > tbody > tr > td[data-label] {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+    min-height: 34px;
+    padding: 6px 0;
+  }
+  .stat-cards-grid > tbody > tr > td.grace-cell {
     align-items: flex-start;
     min-width: 0;
     flex-wrap: wrap;
   }
-  .point-stats-grid .grace-stepper {
+  .stat-cards-grid .grace-stepper {
     flex: 1 1 160px;
     justify-content: flex-end;
   }
-  .point-stats-grid > tbody > tr.attendance-stats-detail-row {
+  .stat-cards-grid > tbody > tr.attendance-stats-detail-row {
     margin-bottom: 10px;
   }
-  .point-stats-grid > tbody > tr > td.point-stats-detail-cell {
+  .stat-cards-grid > tbody > tr > td.stat-cards-detail-cell {
     padding: 12px;
     border: 1px solid var(--teal-600);
     border-top: 0;
     border-radius: 0 0 16px 16px;
     background: var(--cream);
+  }
+  .stat-cards-grid > tbody > tr > td.empty-state {
+    padding: 32px 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--white);
+    text-align: center;
+  }
+  /* 월별 표는 칸이 많아 글자와 여백을 줄여 화면 안에 넣는다 */
+  .stat-cards-detail-cell .attendance-stats-detail th,
+  .stat-cards-detail-cell .attendance-stats-detail td {
+    padding: 7px 4px;
+    font-size: 12px;
   }
   /* 상세 내역 표도 카드로 바꿔 가로 스크롤 없이 읽을 수 있게 한다 */
   .point-history-scroll {
@@ -1827,13 +1874,6 @@ h3 {
     width: auto;
     flex: 1 1 auto;
     max-width: 62%;
-  }
-  .point-stats-grid > tbody > tr > td.empty-state {
-    padding: 32px 12px;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: var(--white);
-    text-align: center;
   }
 }
 
