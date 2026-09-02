@@ -83,6 +83,44 @@ Add these Vercel environment variables without committing real secrets:
 
 Existing Supabase variables remain required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and server-only `SUPABASE_SERVICE_ROLE_KEY`.
 
+## 매일 자동 데이터 백업
+
+핵심 데이터(학생, 학부모 연결, 공지, 훈계·칭찬 점수, 출결 내역 등)가 **매일 한국 시간 새벽 3시**에 JSON 파일 하나로 저장됩니다. 관리자가 `데이터 백업` 탭에서 직접 눌러 받던 파일과 같은 내용이며, 자동 백업은 사람이 아무것도 하지 않아도 남습니다.
+
+### 설정 (한 번만)
+
+1. Supabase SQL Editor에서 `supabase/20260904_daily_data_backup.sql`를 실행합니다. 백업 파일이 쌓일 비공개 Storage 버킷 `data-backups`가 만들어집니다.
+2. Vercel Project Settings > Environment Variables에 `CRON_SECRET`을 추가합니다. 아무나 백업을 돌리지 못하게 막는 값이며, 예를 들어 `openssl rand -hex 32`로 만든 무작위 문자열을 씁니다.
+3. 배포합니다. `vercel.json`의 `crons` 항목이 매일 18:00 UTC(= 한국 시간 새벽 3시)에 `/api/cron/daily-backup`을 부릅니다.
+
+Vercel Hobby 요금제에서 크론은 하루 한 번까지 돌고, 지정한 시각 언저리(같은 시간대 안)에서 실행됩니다. 정각에 딱 맞춰 도는 것은 아닙니다.
+
+### 저장되는 위치와 보관 기간
+
+| 항목 | 값 |
+| --- | --- |
+| 버킷 | `data-backups` (비공개. 브라우저에서 직접 열 수 없음) |
+| 파일 | `daily/holga-backup-2026-09-03.json` 처럼 한국 시간 날짜 이름 |
+| 보관 기간 | 기본 30일. 지난 파일은 다음 백업 때 자동 삭제 |
+| 보관 기간 변경 | Vercel 환경변수 `BACKUP_RETENTION_DAYS`에 일수를 넣습니다 |
+
+같은 날 두 번 돌면 그날 파일을 덮어씁니다.
+
+### 백업 확인·내려받기
+
+관리자로 로그인해 `데이터 백업` 항목을 보면 자동 백업 목록이 날짜·용량과 함께 나옵니다.
+
+- `다운로드`: 5분간만 열리는 서명 링크로 그날 백업을 내려받습니다.
+- `지금 백업하기`: 크론을 기다리지 않고 즉시 한 번 저장합니다(오늘 파일을 덮어씀).
+- 가장 최근 백업이 이틀 이상 지났으면 목록 위에 빨간 경고가 뜹니다. 자동 백업이 멈춘 것을 이렇게 알아챌 수 있습니다.
+
+### 알아 둘 점
+
+- 백업에는 학생·학부모 개인정보가 통째로 들어 있습니다. 버킷은 비공개이고 서버(`service_role`)만 읽고 쓰며, 관리자 화면에도 임시 서명 링크로만 나옵니다. 내려받은 파일은 안전하게 보관하세요.
+- 공지에 첨부된 PDF 원본은 백업에 포함되지 않고, 첨부파일 정보(파일명 등)만 들어갑니다.
+- 백업 파일은 같은 Supabase 프로젝트 안에 저장됩니다. 실수로 지운 기록을 되살리는 데는 충분하지만, 프로젝트 자체를 잃는 상황까지 대비하려면 가끔 `다운로드`로 받은 파일을 학교 컴퓨터나 Google Drive 등 **다른 곳에도** 옮겨 두세요.
+- 자동 백업은 더미(테스트) 데이터를 포함한 모든 행을 담습니다. 복원할 때 빠진 행이 없도록 하기 위해서이며, 관리자가 직접 받는 `백업 파일 다운로드`는 지금까지처럼 남의 테스트 행을 뺍니다.
+
 ## 훈계·칭찬 점수 카테고리 관리
 
 점수 카테고리 목록은 이제 코드 상수가 아니라 `point_categories` 테이블에 있습니다. Supabase SQL Editor에서 `supabase/20260826_point_categories.sql`를 실행하세요. 기존 카테고리 목록이 초기 데이터로 들어가고, `warning_entries`의 고정 카테고리 CHECK 제약이 테이블을 참조하는 트리거로 교체됩니다.
