@@ -6,6 +6,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatBytes } from "@/lib/notice-security";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { noticeTypeLabel } from "@/lib/notices";
+import { linkify } from "@/lib/linkify";
 import ParentAttendanceStats from "@/components/parent/AttendanceStats";
 import ParentPointStats from "@/components/parent/PointStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
@@ -417,7 +418,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
               대상: {recipientText(selected)} ·{" "}
               {new Date(selected.published_at).toLocaleString("ko-KR")}
             </p>
-            <div className="notice-body">{selected.body}</div>
+            <div className="notice-body">{linkify(selected.body)}</div>
             {!!selected.notice_attachments?.length && (
               <div className="attachment-list">
                 {selected.notice_attachments.map((att) => (

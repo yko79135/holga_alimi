@@ -15,6 +15,7 @@ import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalMa
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 import { compareGrades, sortGrades } from "@/lib/grade-sort";
 import { REQUEST_TYPES_TAB_LABEL } from "@/lib/early-dismissal/types";
+import { linkify } from "@/lib/linkify";
 import { audienceIncludesParents, COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, DEFAULT_NOTICE_AUDIENCE, NOTICE_AUDIENCES, NOTICE_AUDIENCE_LABELS, NOTICE_TYPE_LABELS, noticeAudienceLabel, noticeTypeLabel } from "@/lib/notices";
 
 type Student = { id: string; name: string; grade: string; homeroom: string | null; active: boolean; test_owner_id?: string | null };
@@ -443,7 +444,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <><label>알림 종류 직접 입력</label><input value={form.customTypeLabel} onChange={(e) => setForm({...form,customTypeLabel:e.target.value})} required placeholder="예: 체험학습 안내" /></>
           )}
           <label>제목</label><input value={form.title} onChange={(e) => setForm({...form,title:e.target.value})} required placeholder="예: 수업 태도 관련 생활지도 안내" />
-          <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder={`${composeAudienceWord}에게 전달할 내용을 작성하세요.`} />
+          <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder={`${composeAudienceWord}에게 전달할 내용을 작성하세요.\n\n주소를 그대로 붙여넣으면 링크가 됩니다. 예) https://holyguide.kr/notice`} />
+          <p className="field-hint">본문에 적은 주소(https://... 또는 www....)는 받는 사람 화면에서 눌러서 바로 열 수 있는 링크로 보입니다.</p>
 
           <label>PDF 첨부 (최대 5개, 각 20MB 이하)</label><input type="file" accept="application/pdf" multiple onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, MAX_NOTICE_ATTACHMENTS))} />
           {files.length > 0 && <div className="attachment-list">{files.map((file, index) => <div className="attachment-item" key={`${file.name}-${index}`}><span>📎 {file.name} · {formatBytes(file.size)}</span><button type="button" className="secondary" onClick={() => setFiles(files.filter((_, i) => i !== index))}>삭제</button></div>)}</div>}
@@ -478,7 +480,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                   </div>
                   {reachesParents ? <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div> : <div className="ack-summary"><b>교사</b><span>대상 알림</span></div>}
                 </div>
-                <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{notice.body}</p>
+                <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{linkify(notice.body)}</p>
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
                 <button type="button" className="secondary" onClick={toggleExpanded}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
                 {isExpanded && (

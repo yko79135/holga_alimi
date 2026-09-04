@@ -296,6 +296,12 @@ h3 {
   color: var(--ink);
   outline: none;
 }
+.field-hint {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
 .login-card input:focus,
 .form-panel input:focus,
 .form-panel select:focus,
@@ -563,6 +569,18 @@ h3 {
   border-radius: var(--radius-md);
   padding: 18px;
   margin: 20px 0;
+}
+.notice-body a,
+.sent-preview a {
+  color: var(--teal-900);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.notice-body a:hover,
+.sent-preview a:hover {
+  color: var(--teal-600);
 }
 .reply-box {
   border-top: 1px solid var(--line);
