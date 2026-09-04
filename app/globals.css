@@ -480,6 +480,11 @@ h3 {
   background: var(--blue-100);
   color: var(--teal-700);
 }
+.notice-icon.preparation,
+.tag.preparation {
+  background: var(--mint-100);
+  color: var(--teal-700);
+}
 .notice-icon.praise,
 .tag.praise {
   background: #fff8e1;
