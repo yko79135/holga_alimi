@@ -342,7 +342,9 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                                   ? "🎉"
                                   : notice.type === "attendance"
                                     ? "🚶"
-                                    : "✉"}
+                                    : notice.type === "preparation"
+                                      ? "🎒"
+                                      : "✉"}
                           </span>
                           <span className="notice-main">
                             <span className="notice-meta">

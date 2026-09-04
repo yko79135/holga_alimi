@@ -99,6 +99,10 @@ const PROBES = {
     `exists (select 1 from information_schema.columns where table_schema='public' and table_name='students' and column_name='test_owner_id')`,
   "20260903_early_dismissal_tardy_request_type.sql":
     `(select pg_get_constraintdef(oid) from pg_constraint where conrelid='public.early_dismissal_requests'::regclass and conname='early_dismissal_requests_type_check') like '%tardy%'`,
+  "20260904_daily_data_backup.sql":
+    `exists (select 1 from storage.buckets where id='data-backups')`,
+  "20260904_notice_type_preparation.sql":
+    `exists (select 1 from pg_enum where enumtypid='public.notice_type'::regtype and enumlabel='preparation')`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.
