@@ -1385,6 +1385,11 @@ h3 {
   min-width: 980px;
   width: max-content;
 }
+/* 통계 표는 칸이 적어 max-content로 두면 오른쪽이 비고, 대신 펼친 상세 내역의 긴 사유가
+   표 전체를 옆으로 밀어낸다. 폭을 컨테이너에 맞춰 고정하고 사유를 여러 줄로 접게 한다. */
+.stat-cards-grid {
+  width: 100%;
+}
 .warning-grid th,
 .warning-grid td {
   border-right: 1px solid var(--line);
@@ -1643,6 +1648,19 @@ h3 {
 .point-history-table {
   min-width: 640px;
 }
+/* 사유(코멘트)만 여러 줄로 접고 나머지 칸은 접지 않는다. 사유가 한 줄로 뻗으면 표가 옆으로
+   밀리고, 반대로 전부 접히게 두면 좁아진 칸에서 "총 점수"가 세로로 쪼개진다. */
+.point-history-table th,
+.point-history-table > tbody > tr > td {
+  white-space: nowrap;
+}
+.point-history-reason {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.5;
+}
 .point-history-table input,
 .point-history-table select {
   width: 100%;
@@ -1660,7 +1678,7 @@ h3 {
   gap: 6px;
   justify-content: center;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .point-history-actions button {
   padding: 6px 12px;
@@ -1876,6 +1894,7 @@ h3 {
     padding: 5px 0;
     border: 0;
     text-align: right;
+    white-space: normal;
   }
   .point-history-table > tbody > tr > td + td {
     border-top: 1px solid var(--line);
@@ -1897,6 +1916,10 @@ h3 {
     width: auto;
     flex: 1 1 auto;
     max-width: 62%;
+  }
+  /* 카드에서는 라벨 옆 남는 폭을 그대로 쓰고 오른쪽 정렬을 따른다 */
+  .point-history-reason {
+    text-align: right;
   }
 }
 

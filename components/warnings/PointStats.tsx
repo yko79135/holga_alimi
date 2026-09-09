@@ -165,7 +165,7 @@ function PointHistoryTable({
                     <td data-label="적용 점수">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}점</td>
                     <td data-label="날짜">{entryDateLabel(entry)}</td>
                     <td data-label="수업">{entry.class_periods?.name || "-"}</td>
-                    <td data-label="사유">{entry.parent_visible_reason || entry.category || "사유 없음"}</td>
+                    <td data-label="사유"><div className="point-history-reason">{entry.parent_visible_reason || entry.category || "사유 없음"}</div></td>
                     <td data-label="총 점수"><b>{total}점</b></td>
                     <td className="point-history-manage">
                       <div className="point-history-actions">
