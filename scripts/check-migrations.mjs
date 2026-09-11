@@ -103,6 +103,8 @@ const PROBES = {
     `exists (select 1 from storage.buckets where id='data-backups')`,
   "20260904_notice_type_preparation.sql":
     `exists (select 1 from pg_enum where enumtypid='public.notice_type'::regtype and enumlabel='preparation')`,
+  "20260911_notice_edits.sql":
+    `exists (select 1 from information_schema.columns where table_schema='public' and table_name='notices' and column_name='edited_at')`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.

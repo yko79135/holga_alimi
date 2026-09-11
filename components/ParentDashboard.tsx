@@ -38,6 +38,7 @@ type Notice = {
   target_grade: string | null;
   requires_confirmation: boolean;
   published_at: string;
+  edited_at: string | null;
   notice_students?: Array<{
     student_id: string;
     students: Student | Student[] | null;
@@ -357,6 +358,7 @@ export default function ParentDashboard({ userId }: { userId: string }) {
                               {new Date(notice.published_at).toLocaleString(
                                 "ko-KR",
                               )}
+                              {notice.edited_at ? " · 수정됨" : ""}
                             </small>
                           </span>
                           <span className="notice-state">
@@ -417,6 +419,9 @@ export default function ParentDashboard({ userId }: { userId: string }) {
             <p className="modal-meta">
               대상: {recipientText(selected)} ·{" "}
               {new Date(selected.published_at).toLocaleString("ko-KR")}
+              {selected.edited_at
+                ? ` · ${new Date(selected.edited_at).toLocaleString("ko-KR")} 수정됨`
+                : ""}
             </p>
             <div className="notice-body">{linkify(selected.body)}</div>
             {!!selected.notice_attachments?.length && (

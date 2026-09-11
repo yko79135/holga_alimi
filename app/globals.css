@@ -284,6 +284,8 @@ h3 {
 .form-panel input,
 .form-panel select,
 .form-panel textarea,
+.notice-edit-form input,
+.notice-edit-form textarea,
 .reply-box textarea,
 .reset-modal input,
 .destructive-modal input,
@@ -675,12 +677,16 @@ h3 {
 .three-columns {
   grid-template-columns: repeat(3, 1fr);
 }
-.form-panel textarea {
+.form-panel textarea,
+.notice-edit-form textarea {
   min-height: 120px;
   resize: vertical;
 }
 .form-panel textarea.tall {
   min-height: 230px;
+}
+.notice-edit-form textarea.tall {
+  min-height: 160px;
 }
 .switch-line {
   display: flex !important;
@@ -747,6 +753,74 @@ h3 {
 .sent-list {
   display: grid;
   gap: 12px;
+}
+/* 발송 기록 거르기. 점수·출석 자동 알림이 수백 건 쌓여도 직접 보낸 알림을 찾을 수 있게 한다. */
+.record-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.record-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.record-filter-tabs button {
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 900;
+  font-size: 13px;
+  color: var(--teal-800);
+}
+.record-filter-tabs button.active {
+  background: var(--teal-800);
+  color: var(--white);
+  border-color: var(--teal-800);
+}
+.record-search {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.sent-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notice-edit-form {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.86);
+}
+.notice-edit-form .modal-actions {
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.attachment-picker input[type="file"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.attachment-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  font-weight: 800;
+  color: var(--teal-800);
+}
+.attachment-item.removed {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.attachment-item.removed button {
+  text-decoration: none;
 }
 .sent-card,
 .account-card {
