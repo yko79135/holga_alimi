@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment } from "@/lib/early-dismissal/format";
-import { compareGrades } from "@/lib/grade-sort";
+import { compareGrades, compareStudentNames } from "@/lib/grade-sort";
 import { REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 
 type Filter = "open" | "unrecorded" | "all";
@@ -45,7 +45,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
       if (filter === "unrecorded") return request.state === "submitted";
       return true;
     });
-    return [...rows].sort((a, b) => b.dismissalDate.localeCompare(a.dismissalDate) || compareGrades(a.studentGrade, b.studentGrade) || a.studentName.localeCompare(b.studentName));
+    return [...rows].sort((a, b) => b.dismissalDate.localeCompare(a.dismissalDate) || compareGrades(a.studentGrade, b.studentGrade) || compareStudentNames(a.studentName, b.studentName));
   }, [requests, filter]);
 
   const unrecordedCount = useMemo(() => requests.filter((request) => request.state === "submitted").length, [requests]);

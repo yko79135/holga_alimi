@@ -15,7 +15,7 @@ import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalMa
 import NoticeAttachmentPicker from "@/components/notices/NoticeAttachmentPicker";
 import { uploadNoticeAttachments } from "@/lib/notice-attachment-upload";
 import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
-import { compareGrades, sortGrades } from "@/lib/grade-sort";
+import { compareGrades, compareStudentNames, sortGrades } from "@/lib/grade-sort";
 import { REQUEST_TYPES_TAB_LABEL } from "@/lib/early-dismissal/types";
 import { linkify } from "@/lib/linkify";
 import { audienceIncludesParents, COMPOSABLE_NOTICE_TYPES, CUSTOM_NOTICE_TYPE, DEFAULT_NOTICE_AUDIENCE, NOTICE_AUDIENCES, NOTICE_AUDIENCE_LABELS, NOTICE_TYPE_LABELS, noticeAudienceLabel, noticeTypeLabel } from "@/lib/notices";
@@ -91,7 +91,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [studentPickerGrade, setStudentPickerGrade] = useState("");
   const [studentPickerSearch, setStudentPickerSearch] = useState("");
 
-  const sortStudents = (items: Student[]) => [...items].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name));
+  const sortStudents = (items: Student[]) => [...items].sort((a, b) => compareGrades(a.grade, b.grade) || compareStudentNames(a.name, b.name));
 
   const loadStudents = useCallback(async () => {
     const supabase = createClient();
