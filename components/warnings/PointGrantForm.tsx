@@ -38,6 +38,9 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
   const [categoryMsg, setCategoryMsg] = useState("");
   const [categoryErr, setCategoryErr] = useState("");
   const [deletingCategory, setDeletingCategory] = useState<PointCategory | null>(null);
+  const [editingCategory, setEditingCategory] = useState<PointCategory | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryHint, setEditCategoryHint] = useState("");
   const [pending, setPending] = useState(false);
   const [classPending, setClassPending] = useState(false);
   const [msg, setMsg] = useState("");
@@ -215,6 +218,42 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
     }
   }
 
+  function startEditCategory(target: PointCategory) {
+    setEditingCategory(target);
+    setEditCategoryName(target.name);
+    setEditCategoryHint(target.pointHint ?? "");
+  }
+
+  /** Renaming only changes the list. Past point records keep the name they were saved with, the
+   * same way deactivating or deleting a category leaves them alone. */
+  async function saveCategoryEdit() {
+    const target = editingCategory;
+    const name = editCategoryName.trim();
+    if (!target || !name || categoryPending) return;
+    setCategoryPending(true);
+    setCategoryErr("");
+    setCategoryMsg("");
+    try {
+      const response = await fetch(`/api/admin/point-categories/${target.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, pointHint: editCategoryHint.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "카테고리를 수정하지 못했습니다.");
+      const savedName = result.category?.name || name;
+      // Keep the grant form's selection pointing at the same category under its new name.
+      if (category === target.name) setCategory(savedName);
+      setEditingCategory(null);
+      setCategoryMsg(savedName === target.name ? `"${savedName}" 카테고리를 수정했습니다.` : `"${target.name}" 카테고리 이름을 "${savedName}"(으)로 바꿨습니다.`);
+      await loadCategories();
+    } catch (error) {
+      setCategoryErr(error instanceof Error ? error.message : "카테고리를 수정하지 못했습니다.");
+    } finally {
+      setCategoryPending(false);
+    }
+  }
+
   async function deleteCategory() {
     const target = deletingCategory;
     if (!target || categoryPending) return;
@@ -294,6 +333,7 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
               {categories.map((c) => (
                 <span className="pill class-period-pill" key={c.id}>
                   {categoryOptionLabel(c)}{!c.active ? " (비활성)" : ""}
+                  <button type="button" className="secondary" onClick={() => startEditCategory(c)} disabled={categoryPending}>수정</button>
                   <button type="button" className="secondary" onClick={() => toggleCategory(c)} disabled={categoryPending}>
                     {c.active ? "비활성화" : "활성화"}
                   </button>
@@ -383,6 +423,38 @@ export default function PointGrantForm({ role, kind, students }: { role: string;
         onConfirm={() => void submit()}
       >
         <p>선택한 학생 {studentIds.length}명 전원에게 &ldquo;{isCustomCategory ? customCategoryLabel : category}&rdquo; 사유로 {POINT_KIND_LABELS[kind]} {pointsValue}점이 한번에 부여되고, 각 학생의 학부모에게 개별 알림이 전송됩니다. 계속할까요?</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!editingCategory}
+        title={`${meta.categoryLabel} 수정`}
+        eyebrow="EDIT CATEGORY"
+        confirmLabel="저장"
+        pending={categoryPending}
+        confirmDisabled={!editCategoryName.trim()}
+        onClose={() => setEditingCategory(null)}
+        onConfirm={() => void saveCategoryEdit()}
+      >
+        <div className="form-panel">
+          <label>카테고리 이름
+            <input
+              value={editCategoryName}
+              onChange={(e) => setEditCategoryName(e.target.value)}
+              maxLength={MAX_CATEGORY_NAME_LENGTH}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveCategoryEdit(); } }}
+            />
+          </label>
+          <label>참고 점수 (선택)
+            <input
+              value={editCategoryHint}
+              onChange={(e) => setEditCategoryHint(e.target.value)}
+              placeholder="예: 1점, 10~30점"
+              maxLength={MAX_CATEGORY_HINT_LENGTH}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveCategoryEdit(); } }}
+            />
+          </label>
+        </div>
+        <p className="muted">이미 부여된 점수 기록과 보낸 알림에는 저장할 때의 이름이 그대로 남습니다.</p>
       </ConfirmDialog>
 
       <ConfirmDialog
