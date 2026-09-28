@@ -105,6 +105,10 @@ const PROBES = {
     `exists (select 1 from pg_enum where enumtypid='public.notice_type'::regtype and enumlabel='preparation')`,
   "20260911_notice_edits.sql":
     `exists (select 1 from information_schema.columns where table_schema='public' and table_name='notices' and column_name='edited_at')`,
+  "20260928_attendance_excused_late.sql":
+    `exists (select 1 from pg_enum where enumtypid='public.attendance_status'::regtype and enumlabel='excused_late')`,
+  "20260929_attendance_excused_late_backfill.sql":
+    { manual: "학부모 지각 신청으로 기록된 지각을 인정지각으로 옮기는 1회성 보정. 앞 파일 적용 후 실행했는지 눈으로 확인한다." },
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.
