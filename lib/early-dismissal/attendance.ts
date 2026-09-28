@@ -16,7 +16,7 @@ type Params = {
   requestId: string;
   studentId: string;
   studentName: string;
-  /** Decides which status the day is written as: 조퇴 -> early_leave, 지각 -> late, 결석 -> absent. */
+  /** Decides which status the day is written as: 조퇴 -> early_leave, 지각 -> excused_late, 결석 -> absent. */
   type: EarlyDismissalRequestType;
   dismissalDate: string;
   dismissalTime: string | null;

@@ -30,11 +30,12 @@ export const REQUEST_TYPE_LABELS: Record<EarlyDismissalRequestType, string> = {
 export const REQUEST_TYPES_SUMMARY = REQUEST_TYPES.map((type) => REQUEST_TYPE_LABELS[type]).join(" · ");
 export const REQUEST_TYPES_TAB_LABEL = `${REQUEST_TYPES.map((type) => REQUEST_TYPE_LABELS[type]).join("·")} 신청`;
 
-/** The attendance status each kind is written as when a teacher records it. */
+/** The attendance status each kind is written as when a teacher records it. A parent's 지각 신청
+ * states its reason up front, so it is recorded as 인정지각 rather than an unexcused 지각. */
 export const REQUEST_TYPE_ATTENDANCE_STATUS: Record<EarlyDismissalRequestType, AttendanceStatus> = {
   early_dismissal: "early_leave",
   absence: "absent",
-  tardy: "late",
+  tardy: "excused_late",
 };
 
 /** What the optional clock means for each kind, and null for the kind that has none: a 결석 covers
