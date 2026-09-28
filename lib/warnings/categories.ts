@@ -47,12 +47,14 @@ export const DEFAULT_DISCIPLINE_CATEGORY_POINT_HINTS: Record<string, string> = {
 /** Kept in 가나다 order to match how praise categories are listed everywhere else (see
  * comparePointCategories). */
 export const DEFAULT_PRAISE_CATEGORIES = [
-  "과제·활동 성실 수행",
+  "과제 성실히 수행",
   "교사 지도에 잘 따름",
   "말씀묵상 성실",
+  "문제 풀이 노력",
   "발표 우수",
   "성적 우수",
   "수업 태도 우수",
+  "수업 활동 성실히 참여",
   "질문에 훌륭히 답변",
   "친구를 도와줌",
 ] as const;

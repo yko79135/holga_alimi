@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { categoryOptionLabel, fallbackCategoriesForKind, isValidPointValue, CUSTOM_CATEGORY, DEFAULT_POINT_VALUE, MAX_CATEGORY_HINT_LENGTH, MAX_CATEGORY_NAME_LENGTH, MAX_DISCIPLINE_POINT_VALUE, POINT_KIND_LABELS, POINT_KIND_SHORT_LABELS, type PointCategory, type PointKind } from "@/lib/warnings/categories";
-import { compareGrades, sortGrades } from "@/lib/grade-sort";
+import { compareGrades, compareStudentNames, sortGrades } from "@/lib/grade-sort";
 
 type Student = { id: string; name: string; grade: string; active?: boolean };
 type ClassPeriod = { id: string; name: string; active: boolean };
@@ -16,7 +16,7 @@ const KIND_META: Record<PointKind, { eyebrow: string; title: string; description
 
 export default function PointGrantForm({ role, kind, students }: { role: string; kind: PointKind; students: Student[] }) {
   const meta = KIND_META[kind];
-  const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name)), [students]);
+  const activeStudents = useMemo(() => students.filter((s) => s.active !== false).sort((a, b) => compareGrades(a.grade, b.grade) || compareStudentNames(a.name, b.name)), [students]);
 
   const [pickerGrade, setPickerGrade] = useState("");
   const [pickerSearch, setPickerSearch] = useState("");

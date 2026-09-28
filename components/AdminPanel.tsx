@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { compareGrades } from "@/lib/grade-sort";
+import { compareGrades, compareStudentNames } from "@/lib/grade-sort";
 import HomeroomSettings from "@/components/early-dismissal/HomeroomSettings";
 import BackupHistory from "@/components/admin/BackupHistory";
 import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester, resetRecordsConfirmPhrase } from "@/lib/semester";
@@ -122,7 +122,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
 
   useEffect(() => {
     const supabase = createClient();
-    void supabase.from("students").select("id,name,grade").order("grade").order("name").then(({ data }) => setStudents([...(data || [])].sort((a, b) => compareGrades(a.grade, b.grade) || a.name.localeCompare(b.name))));
+    void supabase.from("students").select("id,name,grade").order("grade").order("name").then(({ data }) => setStudents([...(data || [])].sort((a, b) => compareGrades(a.grade, b.grade) || compareStudentNames(a.name, b.name))));
     void loadAccounts();
     void loadInvites();
   }, [loadAccounts, loadInvites]);
