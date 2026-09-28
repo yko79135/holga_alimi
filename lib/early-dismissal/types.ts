@@ -21,10 +21,11 @@ export const REQUEST_TYPES: EarlyDismissalRequestType[] = ["early_dismissal", "t
 export const REQUEST_TYPE_LABELS: Record<EarlyDismissalRequestType, string> = {
   early_dismissal: "조퇴",
   absence: "결석",
-  tardy: "지각",
+  // 학부모가 사유를 적어 내는 지각은 출석부에 인정지각으로 기록되므로 신청 이름도 인정지각이다.
+  tardy: "인정지각",
 };
 
-/** "조퇴 · 지각 · 결석" and "조퇴·지각·결석 신청" -- headings and tab buttons name every kind so a
+/** "조퇴 · 인정지각 · 결석" and "조퇴·인정지각·결석 신청" -- headings and tab buttons name every kind so a
  * parent can tell one tab covers all of them. Derived from REQUEST_TYPES so adding a kind can
  * never leave a stale label behind. */
 export const REQUEST_TYPES_SUMMARY = REQUEST_TYPES.map((type) => REQUEST_TYPE_LABELS[type]).join(" · ");
