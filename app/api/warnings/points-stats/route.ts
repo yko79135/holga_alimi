@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
 import { sortGrades, sortStudentsByGrade } from "@/lib/grade-sort";
+import { selectAll } from "@/lib/supabase/select-all";
 
 export const runtime = "nodejs";
 
@@ -37,13 +38,13 @@ export async function GET(req: Request) {
   let praiseEntries: any[] = [];
   const graceTotals = new Map<string, number>();
   if (ids.length) {
-    const { data, error } = await a.supabase.from("warning_entries").select("student_id,month,delta,kind,entry_type").in("student_id", ids).eq("academic_year", year).eq("semester", semester);
+    const { data, error } = await selectAll<any>((from, to) => a.supabase.from("warning_entries").select("id,student_id,month,delta,kind,entry_type").in("student_id", ids).eq("academic_year", year).eq("semester", semester).order("id").range(from, to));
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    disciplineEntries = (data || []).filter((entry: any) => entry.kind !== "praise");
-    praiseEntries = (data || []).filter((entry: any) => entry.kind === "praise");
+    disciplineEntries = data.filter((entry: any) => entry.kind !== "praise");
+    praiseEntries = data.filter((entry: any) => entry.kind === "praise");
     // 희월(grace conversion) is recorded as a paired praise-deduction + discipline-deduction entry;
     // the discipline-side |delta| is exactly the number of 희월 units applied in that settlement.
-    for (const entry of data || []) {
+    for (const entry of data) {
       if (entry.entry_type !== "grace_conversion" || entry.kind !== "discipline") continue;
       graceTotals.set(entry.student_id, (graceTotals.get(entry.student_id) || 0) + Math.abs(Number(entry.delta || 0)));
     }
