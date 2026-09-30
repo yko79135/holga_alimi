@@ -16,6 +16,10 @@ type StatsStudent = {
 
 const now = new Date();
 
+/** 학부모 화면에는 병결 칸을 두지 않는다. 학부모 신청은 인정결석·결석으로 기록되고, 병결은
+ * 교사용 출석 관리·통계에만 남는다. */
+const PARENT_STATUSES = ATTENDANCE_EXCEPTION_STATUSES.filter((status) => status !== "sick_leave");
+
 export default function ParentAttendanceStats() {
   const [year, setYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState<number>(defaultSemester());
@@ -64,7 +68,7 @@ export default function ParentAttendanceStats() {
           <h3>{row.name} <span className="pill">{row.grade}{row.homeroom ? ` · ${row.homeroom}` : ""}</span></h3>
           <div className="stats-row">
             <div className="stat-card"><span>출석</span><strong>{row.presentEstimate}</strong></div>
-            {ATTENDANCE_EXCEPTION_STATUSES.map((status) => (
+            {PARENT_STATUSES.map((status) => (
               <div className="stat-card" key={status}><span>{ATTENDANCE_STATUS_LABELS[status]}</span><strong>{row.semesterCounts?.[status] ?? 0}</strong></div>
             ))}
           </div>
