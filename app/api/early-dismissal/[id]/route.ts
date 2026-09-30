@@ -5,7 +5,7 @@ import { getUserRoles } from "@/lib/roles-server";
 import { notifyStaffOfEarlyDismissal } from "@/lib/push/send";
 import { buildCancellationNotice, withMeansParticle } from "@/lib/early-dismissal/format";
 import { recordEarlyDismissalAttendance, revertEarlyDismissalAttendance } from "@/lib/early-dismissal/attendance";
-import { isRequestType, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
+import { REQUEST_TYPE_RECORD_OPTIONS, isRecordableStatus, isRequestType, recordedStatusLabel, recordedStatusOf, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 import { isMissingRequestTypeError, warnRequestTypeMissing, withoutRequestType } from "@/lib/early-dismissal/schema";
 
 export const runtime = "nodejs";
@@ -23,10 +23,11 @@ type RequestRow = {
   returns_same_day: boolean;
   cancelled_at: string | null;
   attendance_recorded_at: string | null;
+  attendance_recorded_status: string | null;
   students: { name: string; grade: string } | Array<{ name: string; grade: string }> | null;
 };
 
-const ROW_SELECT = "id,student_id,parent_id,request_type,dismissal_date,dismissal_time,reason,guardian_name,returns_same_day,cancelled_at,attendance_recorded_at,students(name,grade)";
+const ROW_SELECT = "id,student_id,parent_id,request_type,dismissal_date,dismissal_time,reason,guardian_name,returns_same_day,cancelled_at,attendance_recorded_at,attendance_recorded_status,students(name,grade)";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -97,18 +98,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // Any teacher can put the request on the attendance sheet -- there is no approver any more, so
-  // whoever handles the student that day records it. The request's own kind decides whether the
-  // day is written as 조퇴, 지각, or 결석. The attendance write itself goes through the
+  // whoever handles the student that day records it. The request's kind decides what may be
+  // written -- 조퇴, or for a 지각/결석 whether the reason is 인정 or 무단, which the teacher picks
+  // (REQUEST_TYPE_RECORD_OPTIONS). The attendance write itself goes through the
   // teacher's own client, so attendance_entries' RLS still applies and the entry has a real author.
   if (action === "record") {
     if (row.cancelled_at) return NextResponse.json({ error: "취소된 신청입니다." }, { status: 409 });
     if (row.attendance_recorded_at) return NextResponse.json({ error: "이미 출석부에 기록된 신청입니다." }, { status: 409 });
+    // A kind with only one way to record it (조퇴) needs no choice from the caller.
+    const options = REQUEST_TYPE_RECORD_OPTIONS[requestType];
+    const status = body.status === undefined && options.length === 1 ? options[0].status : body.status;
+    if (!isRecordableStatus(requestType, status)) {
+      return NextResponse.json({ error: `${options.map((option) => option.label).join(" 또는 ")} 중 하나를 골라 주세요.` }, { status: 400 });
+    }
+    const statusLabel = recordedStatusLabel(requestType, status);
 
     const sync = await recordEarlyDismissalAttendance(supabase, {
       requestId: id,
       studentId: row.student_id,
       studentName: student.name,
       type: requestType,
+      status,
       dismissalDate: row.dismissal_date,
       dismissalTime: usesDismissalTime(requestType) ? row.dismissal_time : null,
       reason: row.reason,
@@ -118,7 +128,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "출석부 기록에 실패했습니다. 출석 관리에서 직접 입력해 주세요." }, { status: 500 });
     }
 
-    const { error } = await admin.from("early_dismissal_requests").update({ attendance_recorded_at: now, attendance_recorded_by: user.id, updated_at: now }).eq("id", id);
+    const { error } = await admin.from("early_dismissal_requests").update({ attendance_recorded_at: now, attendance_recorded_by: user.id, attendance_recorded_status: status, updated_at: now }).eq("id", id);
     if (error) {
       console.error("early-dismissal-record-flag-failed", { id, code: error.code, message: error.message });
       return NextResponse.json({ error: "출석부에는 기록했지만 신청 상태를 갱신하지 못했습니다. 목록을 새로고침해 주세요." }, { status: 500 });
@@ -137,8 +147,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({
       success: true,
       message: sync.recorded
-        ? `출석부에 ${withMeansParticle(typeLabel)} 기록했습니다.`
-        : `해당 날짜는 이미 ${withMeansParticle(typeLabel)} 기록되어 있어 출석부는 그대로 두었습니다.`,
+        ? `출석부에 ${withMeansParticle(statusLabel)} 기록했습니다.`
+        : `해당 날짜는 이미 ${withMeansParticle(statusLabel)} 기록되어 있어 출석부는 그대로 두었습니다.`,
     });
   }
 
@@ -146,12 +156,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // to whatever the day held before, and only while it still reads what this request wrote.
   if (action === "unrecord") {
     if (!row.attendance_recorded_at) return NextResponse.json({ error: "아직 출석부에 기록되지 않은 신청입니다." }, { status: 409 });
+    const recordedStatus = recordedStatusOf(requestType, row.attendance_recorded_status);
 
     const sync = await revertEarlyDismissalAttendance(supabase, {
       requestId: id,
       studentId: row.student_id,
       studentName: student.name,
       type: requestType,
+      status: recordedStatus,
       dismissalDate: row.dismissal_date,
       authorId: user.id,
     });
@@ -159,7 +171,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "출석부 기록을 되돌리지 못했습니다. 출석 관리에서 직접 수정해 주세요." }, { status: 500 });
     }
 
-    const { error } = await admin.from("early_dismissal_requests").update({ attendance_recorded_at: null, attendance_recorded_by: null, updated_at: now }).eq("id", id);
+    const { error } = await admin.from("early_dismissal_requests").update({ attendance_recorded_at: null, attendance_recorded_by: null, attendance_recorded_status: null, updated_at: now }).eq("id", id);
     if (error) {
       console.error("early-dismissal-unrecord-flag-failed", { id, code: error.code, message: error.message });
       return NextResponse.json({ error: "신청 상태를 갱신하지 못했습니다. 목록을 새로고침해 주세요." }, { status: 500 });
@@ -168,7 +180,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({
       success: true,
       message: sync.recorded
-        ? `출석부의 ${typeLabel} 기록을 되돌렸습니다.`
+        ? `출석부의 ${recordedStatusLabel(requestType, recordedStatus)} 기록을 되돌렸습니다.`
         : "출석부는 이후 따로 수정되어 그대로 두고, 신청의 기록 표시만 해제했습니다.",
     });
   }

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment } from "@/lib/early-dismissal/format";
 import { compareGrades, compareStudentNames } from "@/lib/grade-sort";
-import { REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
+import { REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, REQUEST_TYPE_RECORD_OPTIONS, STATE_LABELS, recordedStatusLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest } from "@/lib/early-dismissal/types";
 
 type Filter = "open" | "unrecorded" | "all";
 
@@ -81,7 +81,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
         <div>
           <p className="eyebrow">ATTENDANCE REQUESTS</p>
           <h2>{REQUEST_TYPES_SUMMARY} 신청</h2>
-          <p className="muted">학부모가 제출한 {REQUEST_TYPES_SUMMARY} 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 신청한 종류대로 출석부에 기록해 주세요.</p>
+          <p className="muted">학부모가 제출한 {REQUEST_TYPES_SUMMARY} 신청입니다. 별도의 승인 절차는 없고, 제출 즉시 모든 선생님께 알림이 갑니다. 내용을 확인한 뒤 출석부에 기록해 주세요. 지각과 결석은 사유를 인정하는지에 따라 인정/무단 중 하나로 기록하며, 통계에도 따로 집계됩니다.</p>
         </div>
         <span className="pill">출석부 미기록 {unrecordedCount}건</span>
       </div>
@@ -115,7 +115,7 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
               </p>
 
               {request.attendanceRecordedAt && (
-                <p className="muted">출석부 기록: {new Date(request.attendanceRecordedAt).toLocaleString("ko-KR")}{request.attendanceRecordedByName ? ` · ${request.attendanceRecordedByName}` : ""}</p>
+                <p className="muted">출석부 기록: {request.attendanceRecordedStatus ? `${recordedStatusLabel(request.type, request.attendanceRecordedStatus)} · ` : ""}{new Date(request.attendanceRecordedAt).toLocaleString("ko-KR")}{request.attendanceRecordedByName ? ` · ${request.attendanceRecordedByName}` : ""}</p>
               )}
               {!!request.acknowledgedBy.length && (
                 <p className="muted">확인: {request.acknowledgedBy.map((entry) => entry.name).join(", ")}</p>
@@ -125,9 +125,9 @@ export default function EarlyDismissalManager({ userId }: { userId: string }) {
                 <button type="button" className="secondary" disabled={busy || acknowledgedByMe(request)} onClick={() => act(request, { action: "acknowledge" })}>
                   {acknowledgedByMe(request) ? "확인함" : "확인"}
                 </button>
-                {request.state === "submitted" && (
-                  <button type="button" className="primary" disabled={busy} onClick={() => act(request, { action: "record" })}>출석부에 {REQUEST_TYPE_LABELS[request.type]} 기록</button>
-                )}
+                {request.state === "submitted" && REQUEST_TYPE_RECORD_OPTIONS[request.type].map((option, index) => (
+                  <button key={option.status} type="button" className={index === 0 ? "primary" : "secondary"} disabled={busy} onClick={() => act(request, { action: "record", status: option.status })}>출석부에 {option.label} 기록</button>
+                ))}
                 {request.state === "recorded" && (
                   <button type="button" className="danger-outline-button" disabled={busy} onClick={() => act(request, { action: "unrecord" })}>기록 취소</button>
                 )}
