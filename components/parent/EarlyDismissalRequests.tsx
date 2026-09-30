@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { formatDismissalMoment, withMeansParticle, withObjectParticle } from "@/lib/early-dismissal/format";
-import { MAX_REASON_LENGTH, REQUEST_TYPES, REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, timeFieldLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
+import { MAX_REASON_LENGTH, REQUEST_TYPES, REQUEST_TYPES_SUMMARY, REQUEST_TYPE_LABELS, STATE_LABELS, recordedStatusLabel, timeFieldLabel, usesDismissalTime, usesReturnsSameDay, type EarlyDismissalRequest, type EarlyDismissalRequestType } from "@/lib/early-dismissal/types";
 
 type Student = { id: string; name: string; grade: string };
 
@@ -98,7 +98,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
         <div>
           <p className="eyebrow">ATTENDANCE REQUESTS</p>
           <h2>{REQUEST_TYPES_SUMMARY} 신청</h2>
-          <p className="muted">신청하면 모든 선생님께 알림이 전달됩니다. 별도의 승인 절차는 없으며, 선생님이 확인 후 출석부에 신청한 종류대로 기록합니다.</p>
+          <p className="muted">신청하면 모든 선생님께 알림이 전달됩니다. 별도의 승인 절차는 없으며, 선생님이 확인 후 출석부에 기록합니다. 지각과 결석은 사유에 따라 인정지각·인정결석 또는 무단지각·무단결석으로 기록됩니다.</p>
         </div>
       </div>
 
@@ -179,7 +179,7 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
             <p className="muted">
               홈룸 선생님: {request.homeroomTeacherName}
               {request.attendanceRecordedAt
-                ? ` · ${new Date(request.attendanceRecordedAt).toLocaleString("ko-KR")} 출석부에 ${withMeansParticle(REQUEST_TYPE_LABELS[request.type])} 기록됨${request.attendanceRecordedByName ? ` (${request.attendanceRecordedByName})` : ""}`
+                ? ` · ${new Date(request.attendanceRecordedAt).toLocaleString("ko-KR")} 출석부에 ${withMeansParticle(request.attendanceRecordedStatus ? recordedStatusLabel(request.type, request.attendanceRecordedStatus) : REQUEST_TYPE_LABELS[request.type])} 기록됨${request.attendanceRecordedByName ? ` (${request.attendanceRecordedByName})` : ""}`
                 : request.state === "submitted"
                   ? " · 선생님들께 알림이 전달되었습니다."
                   : ""}

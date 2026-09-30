@@ -5,7 +5,7 @@ import { currentStatus, latestStatusByStudentDate } from "@/lib/attendance/aggre
 import { buildAttendanceReasonTemplate } from "@/lib/attendance/reasons";
 import { termForDate } from "@/lib/warnings/term";
 import { ATTENDANCE_STATUS_LABELS, type AttendanceStatus } from "@/lib/attendance/types";
-import { REQUEST_TYPE_ATTENDANCE_STATUS, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "./types";
+import { recordedStatusLabel, requestTypeLabel, usesDismissalTime, type EarlyDismissalRequestType } from "./types";
 import { formatDismissalTime } from "./format";
 
 export type AttendanceSyncResult =
@@ -16,8 +16,10 @@ type Params = {
   requestId: string;
   studentId: string;
   studentName: string;
-  /** Decides which status the day is written as: 조퇴 -> early_leave, 지각 -> excused_late, 결석 -> absent. */
   type: EarlyDismissalRequestType;
+  /** The status the teacher chose to write the day as -- 인정지각 or 지각, 인정결석 or 결석, 조퇴.
+   * The caller checks it against REQUEST_TYPE_RECORD_OPTIONS for the request's kind. */
+  status: AttendanceStatus;
   dismissalDate: string;
   dismissalTime: string | null;
   reason: string;
@@ -92,7 +94,7 @@ async function writeEntry(
  * day by hand in 출석 관리. */
 export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, params: Params): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
-  const newStatus = REQUEST_TYPE_ATTENDANCE_STATUS[params.type];
+  const newStatus = params.status;
   const label = requestTypeLabel(params.type);
   try {
     const entries = await dayEntries(supabase, params.studentId, params.dismissalDate, term.academicYear, term.semester);
@@ -104,7 +106,8 @@ export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, p
 
     const clock = usesDismissalTime(params.type) ? formatDismissalTime(params.dismissalTime) : null;
     const template = buildAttendanceReasonTemplate({ studentName: params.studentName, date: params.dismissalDate, previousStatus, newStatus });
-    const detail = [clock ? `${clock} ${label}` : null, `학부모 ${label} 신청 (사유: ${params.reason})`].filter(Boolean).join(" · ");
+    const recordedLabel = recordedStatusLabel(params.type, newStatus);
+    const detail = [clock ? `${clock} ${recordedLabel}` : null, `학부모 ${label} 신청 (사유: ${params.reason})`].filter(Boolean).join(" · ");
 
     await writeEntry(supabase, await nextKey(supabase, params.requestId, "recorded"), term, {
       studentId: params.studentId,
@@ -127,7 +130,8 @@ export async function recordEarlyDismissalAttendance(supabase: SupabaseClient, p
  * reads the status this request wrote, so a later edit by someone else is never overwritten. */
 export async function revertEarlyDismissalAttendance(supabase: SupabaseClient, params: Omit<Params, "reason" | "dismissalTime">): Promise<AttendanceSyncResult> {
   const term = termForDate(params.dismissalDate);
-  const recordedStatus = REQUEST_TYPE_ATTENDANCE_STATUS[params.type];
+  // What the teacher recorded the request as, not a fixed status per kind.
+  const recordedStatus = params.status;
   try {
     const entries = await dayEntries(supabase, params.studentId, params.dismissalDate, term.academicYear, term.semester);
     if (!entries.length) return { recorded: false, reason: "nothing-to-revert" };
