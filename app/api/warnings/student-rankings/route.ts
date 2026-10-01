@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { userIsAdmin } from "@/lib/roles-server";
 import { selectAll } from "@/lib/supabase/select-all";
-import { sortGrades } from "@/lib/grade-sort";
-import { buildStudentRanking, type StudentRankingEntry } from "@/lib/warnings/student-rankings";
+import { SCHOOL_DIVISIONS, buildStudentRanking, schoolDivision, type StudentRankingEntry } from "@/lib/warnings/student-rankings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,14 +18,11 @@ export async function GET(req: Request) {
   const year = Number(url.searchParams.get("year") || new Date().getFullYear());
   const semester = Number(url.searchParams.get("semester") || 2);
   const kind = url.searchParams.get("kind") === "discipline" ? "discipline" : "praise";
-  const grade = url.searchParams.get("grade") || "";
   if (!Number.isInteger(year) || (semester !== 1 && semester !== 2)) return NextResponse.json({ error: "학년도와 학기를 확인해 주세요." }, { status: 400 });
 
   const studentsRes = await supabase.from("students").select("id,name,grade").eq("active", true);
   if (studentsRes.error) return NextResponse.json({ error: "학생 목록을 불러오지 못했습니다." }, { status: 500 });
-  const allStudents = (studentsRes.data || []) as Array<{ id: string; name: string; grade: string }>;
-  const grades = sortGrades(Array.from(new Set(allStudents.map((student) => student.grade))));
-  const students = grade ? allStudents.filter((student) => student.grade === grade) : allStudents;
+  const students = (studentsRes.data || []) as Array<{ id: string; name: string; grade: string }>;
 
   const entriesRes = await selectAll<StudentRankingEntry>((from, to) =>
     supabase
@@ -40,5 +36,10 @@ export async function GET(req: Request) {
   );
   if (entriesRes.error) return NextResponse.json({ error: "점수 기록을 불러오지 못했습니다." }, { status: 500 });
 
-  return NextResponse.json({ ...buildStudentRanking(entriesRes.data, students, kind), grades });
+  // 초등·중등은 따로 순위를 매긴다 (학년대가 달라 한 줄로 세우면 비교가 안 된다).
+  const divisions = SCHOOL_DIVISIONS.map((division) => ({
+    ...division,
+    ...buildStudentRanking(entriesRes.data, students.filter((student) => schoolDivision(student.grade) === division.key), kind),
+  }));
+  return NextResponse.json({ kind, divisions });
 }

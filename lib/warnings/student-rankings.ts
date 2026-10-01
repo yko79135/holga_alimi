@@ -93,3 +93,16 @@ export function buildStudentRanking(
 
   return { kind, students: rankedStudents, withoutPoints: totals.length - ranked.length, categories: sortCategories(overall) };
 }
+
+export type SchoolDivision = "elementary" | "secondary";
+
+export const SCHOOL_DIVISIONS: Array<{ key: SchoolDivision; label: string; grades: string }> = [
+  { key: "elementary", label: "초등", grades: "G1~G6" },
+  { key: "secondary", label: "중등", grades: "G7~G12" },
+];
+
+/** G1~G6은 초등, G7부터는 중등. 숫자를 읽을 수 없는 학년 표기는 초등으로 둔다. */
+export function schoolDivision(grade: string): SchoolDivision {
+  const number = Number((grade.match(/\d+/) || [])[0]);
+  return Number.isFinite(number) && number >= 7 ? "secondary" : "elementary";
+}

@@ -1,11 +1,12 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import type { CategoryShare, StudentRankingReport } from "@/lib/warnings/student-rankings";
+import type { CategoryShare, SchoolDivision, StudentRankingReport } from "@/lib/warnings/student-rankings";
 import { SELECTABLE_SEMESTERS, SEMESTER_LABELS, defaultSemester } from "@/lib/semester";
 
 type Kind = "praise" | "discipline";
-type Report = StudentRankingReport & { grades: string[] };
+type Division = StudentRankingReport & { key: SchoolDivision; label: string; grades: string };
+type Report = { kind: Kind; divisions: Division[] };
 
 const KIND_LABELS: Record<Kind, string> = { praise: "칭찬", discipline: "훈계" };
 const OVERALL_CATEGORY_LIMIT = 10;
@@ -37,67 +38,23 @@ function CategoryBars({ items, kind, limit }: { items: CategoryShare[]; kind: Ki
   );
 }
 
-export default function StudentPointRankings() {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [semester, setSemester] = useState<number>(defaultSemester());
-  const [kind, setKind] = useState<Kind>("praise");
-  const [grade, setGrade] = useState("");
-  const [report, setReport] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+/** 초등·중등 한 구간: 항목별 막대 + 순위 표. 순위는 구간 안에서만 매긴다. */
+function DivisionRanking({ division, kind }: { division: Division; kind: Kind }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      const params = new URLSearchParams({ year: String(year), semester: String(semester), kind });
-      if (grade) params.set("grade", grade);
-      const response = await fetch(`/api/warnings/student-rankings?${params}`);
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "학생 순위를 불러오지 못했습니다.");
-      setReport(result);
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : "학생 순위를 불러오지 못했습니다.");
-      setReport(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [year, semester, kind, grade]);
-
-  useEffect(() => { void load(); }, [load]);
-
   const label = KIND_LABELS[kind];
-  const students = report?.students || [];
+  const students = division.students;
   const columnCount = 6;
-
   return (
-    <section className="content-card">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">STUDENT RANKING</p>
-          <h2>학생 순위</h2>
-          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 희월 정산·조정은 빼고 셉니다.</p>
-        </div>
-        {report && <span className="pill">{label} 받은 학생 {students.length}명</span>}
+    <div className="rank-division">
+      <div className="trend-legend">
+        <h3>{division.label} 순위 <span className="muted">({division.grades})</span></h3>
+        <span className="pill">{label} 받은 학생 {students.length}명</span>
       </div>
 
-      <div className="warning-toolbar">
-        <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
-        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SELECTABLE_SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
-        <label>기준<select value={kind} onChange={(e) => { setKind(e.target.value as Kind); setExpandedId(null); }}><option value="praise">칭찬 점수</option><option value="discipline">훈계 점수</option></select></label>
-        <label>학년<select value={grade} onChange={(e) => setGrade(e.target.value)}><option value="">전체</option>{(report?.grades || []).map((g) => <option key={g}>{g}</option>)}</select></label>
+      <div className="trend-overall">
+        <div className="trend-legend"><h3>{division.label} {label} 항목별 점수</h3></div>
+        <CategoryBars items={division.categories} kind={kind} limit={OVERALL_CATEGORY_LIMIT} />
       </div>
-
-      {err && <p className="form-error">{err}</p>}
-      {loading && <p className="muted">불러오는 중...</p>}
-
-      {report && (
-        <div className="trend-overall">
-          <div className="trend-legend"><h3>{grade ? `${grade} ` : "전체 "}{label} 항목별 점수</h3></div>
-          <CategoryBars items={report.categories} kind={kind} limit={OVERALL_CATEGORY_LIMIT} />
-        </div>
-      )}
 
       <div className="warning-grid-wrap stat-cards-wrap">
         <table className="warning-grid stat-cards-grid">
@@ -137,13 +94,66 @@ export default function StudentPointRankings() {
                 </Fragment>
               );
             })}
-            {!students.length && !loading && (
-              <tr><td colSpan={columnCount} className="empty-state">이번 학기 {label} 점수를 받은 학생이 없습니다.</td></tr>
+            {!students.length && (
+              <tr><td colSpan={columnCount} className="empty-state">이번 학기 {label} 점수를 받은 {division.label} 학생이 없습니다.</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      {report && report.withoutPoints > 0 && <p className="muted trend-footnote">{label} 점수가 없는 학생 {report.withoutPoints}명은 순위에서 뺐습니다. 같은 점수는 같은 순위입니다.</p>}
+      {division.withoutPoints > 0 && <p className="muted trend-footnote">{label} 점수가 없는 {division.label} 학생 {division.withoutPoints}명은 순위에서 뺐습니다. 같은 점수는 같은 순위입니다.</p>}
+    </div>
+  );
+}
+
+export default function StudentPointRankings() {
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [semester, setSemester] = useState<number>(defaultSemester());
+  const [kind, setKind] = useState<Kind>("praise");
+  const [report, setReport] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      const params = new URLSearchParams({ year: String(year), semester: String(semester), kind });
+      const response = await fetch(`/api/warnings/student-rankings?${params}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "학생 순위를 불러오지 못했습니다.");
+      setReport(result);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "학생 순위를 불러오지 못했습니다.");
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [year, semester, kind]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const label = KIND_LABELS[kind];
+
+  return (
+    <section className="content-card">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">STUDENT RANKING</p>
+          <h2>학생 순위</h2>
+          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 초등(G1~G6)과 중등(G7~G12)은 따로 순위를 매깁니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 희월 정산·조정은 빼고 셉니다.</p>
+        </div>
+      </div>
+
+      <div className="warning-toolbar">
+        <label>학년도<input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} /></label>
+        <label>학기<select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>{SELECTABLE_SEMESTERS.map((value) => <option key={value} value={value}>{SEMESTER_LABELS[value]}</option>)}</select></label>
+        <label>기준<select value={kind} onChange={(e) => setKind(e.target.value as Kind)}><option value="praise">칭찬 점수</option><option value="discipline">훈계 점수</option></select></label>
+      </div>
+
+      {err && <p className="form-error">{err}</p>}
+      {loading && <p className="muted">불러오는 중...</p>}
+
+      {report?.divisions.map((division) => <DivisionRanking key={`${division.key}-${report.kind}`} division={division} kind={report.kind} />)}
     </section>
   );
 }
