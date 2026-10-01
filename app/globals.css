@@ -2878,6 +2878,18 @@ h3 {
 .trend-change {
   white-space: nowrap;
 }
+.trend-totals {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.trend-totals b {
+  white-space: nowrap;
+}
+.trend-totals .muted {
+  font-size: 12px;
+}
 .trend-category-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2928,6 +2940,10 @@ h3 {
   }
   .stat-cards-grid > tbody > tr > td.trend-cell {
     min-width: 0;
+  }
+  .trend-totals {
+    align-items: flex-end;
+    text-align: right;
   }
   .stat-cards-grid > tbody > tr > td.trend-cell .trend-bars {
     flex: 1;

@@ -51,10 +51,10 @@ function WeeklyBars({ weekly, max, compact = false }: { weekly: WeeklyPoint[]; m
 
 function TotalsCell({ totals }: { totals: KindTotals }) {
   return (
-    <>
+    <span className="trend-totals">
       <b>{totals.points}점</b>
-      <span className="muted"> · {totals.count}건 · {totals.students}명</span>
-    </>
+      <span className="muted">{totals.count}건{totals.count ? ` · 건당 ${(totals.points / totals.count).toFixed(1)}점` : ""} · {totals.students}명</span>
+    </span>
   );
 }
 
@@ -202,7 +202,7 @@ export default function TeacherPointTrends() {
           </tbody>
         </table>
       </div>
-      <p className="muted trend-footnote">점수는 정정(음수)까지 반영한 합계이고, 건수·학생 수는 새로 준 기록만 셉니다. 막대는 모든 선생님이 같은 눈금을 씁니다.</p>
+      <p className="muted trend-footnote">점수는 정정(음수)까지 반영한 합계이고, 건수·학생 수는 새로 준 기록만 셉니다. 건당 점수는 한 번에 몇 점씩 주는지 보여 줍니다. 막대는 모든 선생님이 같은 눈금을 씁니다.</p>
     </section>
   );
 }
