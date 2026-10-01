@@ -2950,3 +2950,69 @@ h3 {
     max-width: 200px;
   }
 }
+
+/* 학생 순위 (components/warnings/StudentPointRankings.tsx): 항목별 가로 막대.
+   색은 선생님별 추이와 같은 칭찬 #0a8fb0 / 훈계 #d0703c. */
+.rank-bars {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.rank-bars li {
+  display: grid;
+  grid-template-columns: minmax(90px, 220px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.rank-bar-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rank-bar-track {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--mint-100);
+  overflow: hidden;
+}
+.rank-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+}
+.rank-bar-fill.praise {
+  background: #0a8fb0;
+}
+.rank-bar-fill.discipline {
+  background: #d0703c;
+}
+.rank-bar-value {
+  white-space: nowrap;
+  text-align: right;
+}
+.rank-top-cell {
+  text-align: left;
+}
+@media (max-width: 700px) {
+  .rank-bars li {
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+  }
+  .rank-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .stat-cards-grid > tbody > tr > td.rank-top-cell {
+    text-align: right;
+  }
+}
+.rank-division + .rank-division {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.rank-division > .trend-legend h3 {
+  font-size: 18px;
+}

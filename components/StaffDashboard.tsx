@@ -9,6 +9,7 @@ import WarningManager from "@/components/warnings/WarningManager";
 import PointGrantForm from "@/components/warnings/PointGrantForm";
 import PointStats from "@/components/warnings/PointStats";
 import TeacherPointTrends from "@/components/warnings/TeacherPointTrends";
+import StudentPointRankings from "@/components/warnings/StudentPointRankings";
 import AttendanceManager from "@/components/attendance/AttendanceManager";
 import AttendanceStats from "@/components/attendance/AttendanceStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
@@ -438,6 +439,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   return (
     <div className="staff-wrap">
       <nav className="staff-tabs">
+        {role === "admin" && <button className={tab === "teacher-trends" ? "active" : ""} onClick={() => onTabChange("teacher-trends")}>선생님별 추이</button>}
+        {role === "admin" && <button className={tab === "student-rankings" ? "active" : ""} onClick={() => onTabChange("student-rankings")}>학생 순위</button>}
         <button className={tab === "compose" ? "active" : ""} onClick={() => onTabChange("compose")}>알림 작성</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
@@ -446,7 +449,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         <button className={tab === "attendance" ? "active" : ""} onClick={() => onTabChange("attendance")}>출석 관리</button>
         <button className={tab === "attendance-stats" ? "active" : ""} onClick={() => onTabChange("attendance-stats")}>출석 통계</button>
         <button className={tab === "point-stats" ? "active" : ""} onClick={() => onTabChange("point-stats")}>점수 통계</button>
-        {role === "admin" && <button className={tab === "teacher-trends" ? "active" : ""} onClick={() => onTabChange("teacher-trends")}>선생님별 추이</button>}
         <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => onTabChange("academic-calendar")}>학사일정</button>
         <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => onTabChange("early-dismissal")}>{REQUEST_TYPES_TAB_LABEL}</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
@@ -619,6 +621,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       {tab === "point-stats" && <PointStats role={role} />}
 
       {tab === "teacher-trends" && role === "admin" && <TeacherPointTrends />}
+
+      {tab === "student-rankings" && role === "admin" && <StudentPointRankings />}
 
       {tab === "students" && (
         <section className="student-management-layout">
