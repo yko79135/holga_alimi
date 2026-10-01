@@ -2780,3 +2780,157 @@ h3 {
 .backup-list li a {
   margin-left: auto;
 }
+
+/* 선생님별 칭찬·훈계 추이 (components/warnings/TeacherPointTrends.tsx).
+   두 계열 색은 색각이상 대비를 검증한 쌍이다: 칭찬 #0a8fb0, 훈계 #d0703c. */
+.trend-overall {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.trend-legend h3 {
+  margin: 0 auto 0 0;
+  font-size: 15px;
+  color: var(--teal-900);
+}
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.trend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.trend-swatch.praise,
+.trend-bar.praise {
+  background: #0a8fb0;
+}
+.trend-swatch.discipline,
+.trend-bar.discipline {
+  background: #d0703c;
+}
+.trend-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 130px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+.trend-bars.compact {
+  gap: 2px;
+  height: 36px;
+  min-width: 120px;
+  overflow: hidden;
+}
+.trend-week {
+  flex: 1 1 0;
+  min-width: 26px;
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+.trend-bars.compact .trend-week {
+  min-width: 4px;
+}
+.trend-week:hover {
+  background: var(--mint-100);
+}
+.trend-week-bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+}
+.trend-bar {
+  width: 40%;
+  max-width: 12px;
+  border-radius: 4px 4px 0 0;
+}
+.trend-week-label {
+  padding-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+.trend-cell {
+  min-width: 140px;
+}
+/* 학년 칸이 없는 표라 이름 칸을 맨 왼쪽에 붙인다 (.warning-grid .name은 학년 칸 폭만큼 띄운다). */
+.teacher-trends-grid .name {
+  left: 0;
+}
+.trend-change {
+  white-space: nowrap;
+}
+.trend-category-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 14px 0;
+  text-align: left;
+}
+.trend-categories h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--teal-900);
+}
+.trend-categories ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.trend-categories li {
+  display: flex;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.trend-categories li span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trend-footnote {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.warning-toolbar .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: end;
+  padding-bottom: 10px;
+}
+.warning-toolbar .checkbox-label input {
+  width: auto;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .trend-category-columns {
+    grid-template-columns: 1fr;
+  }
+  .stat-cards-grid > tbody > tr > td.trend-cell {
+    min-width: 0;
+  }
+  .stat-cards-grid > tbody > tr > td.trend-cell .trend-bars {
+    flex: 1;
+    max-width: 200px;
+  }
+}
