@@ -439,8 +439,6 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   return (
     <div className="staff-wrap">
       <nav className="staff-tabs">
-        {role === "admin" && <button className={tab === "teacher-trends" ? "active" : ""} onClick={() => onTabChange("teacher-trends")}>선생님별 추이</button>}
-        {role === "admin" && <button className={tab === "student-rankings" ? "active" : ""} onClick={() => onTabChange("student-rankings")}>학생 순위</button>}
         <button className={tab === "compose" ? "active" : ""} onClick={() => onTabChange("compose")}>알림 작성</button>
         <button className={tab === "praise" ? "active" : ""} onClick={() => onTabChange("praise")}>칭찬 점수</button>
         <button className={tab === "discipline" ? "active" : ""} onClick={() => onTabChange("discipline")}>훈계 점수</button>
@@ -452,6 +450,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
         <button className={tab === "academic-calendar" ? "active" : ""} onClick={() => onTabChange("academic-calendar")}>학사일정</button>
         <button className={tab === "early-dismissal" ? "active" : ""} onClick={() => onTabChange("early-dismissal")}>{REQUEST_TYPES_TAB_LABEL}</button>
         {role === "admin" && <button className={tab === "accounts" ? "active" : ""} onClick={() => onTabChange("accounts")}>계정 관리</button>}
+        {role === "admin" && <button className={tab === "student-rankings" ? "active" : ""} onClick={() => onTabChange("student-rankings")}>학생 순위</button>}
+        {role === "admin" && <button className={tab === "teacher-trends" ? "active" : ""} onClick={() => onTabChange("teacher-trends")}>선생님별 추이</button>}
       </nav>
 
       {tab === "compose" && (
