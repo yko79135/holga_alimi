@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles } from "@/lib/roles-server";
 import { summarizeWarningsForStudents } from "@/lib/warnings/stats";
 
@@ -29,7 +30,11 @@ export async function GET(req: Request) {
   let praiseEntries: any[] = [];
   let graceEntries: any[] = [];
   if (ids.length) {
-    const { data, error } = await supabase
+    // warning_entries RLS hides any row with a teacher_note from parents, so reading through the
+    // parent's session silently drops those rows (e.g. a 훈계 정정 with a note) and the totals no
+    // longer match what staff see. `ids` is already limited to this parent's own children above,
+    // and only score columns are selected here, so the note itself is never read.
+    const { data, error } = await createAdminClient()
       .from("warning_entries")
       .select("student_id,month,delta,kind,entry_type")
       .in("student_id", ids)
