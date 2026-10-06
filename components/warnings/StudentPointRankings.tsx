@@ -38,7 +38,7 @@ function CategoryBars({ items, kind, limit }: { items: CategoryShare[]; kind: Ki
   );
 }
 
-/** 초등·중등 한 구간: 항목별 막대 + 순위 표. 순위는 구간 안에서만 매긴다. */
+/** 초저·초고·중등 한 구간: 항목별 막대 + 순위 표. 순위는 구간 안에서만 매긴다. */
 function DivisionRanking({ division, kind }: { division: Division; kind: Kind }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const label = KIND_LABELS[kind];
@@ -140,7 +140,7 @@ export default function StudentPointRankings() {
         <div>
           <p className="eyebrow">STUDENT RANKING</p>
           <h2>학생 순위</h2>
-          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 초등(G1~G6)과 중등(G7~G12)은 따로 순위를 매깁니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 희월 정산·조정은 빼고 셉니다.</p>
+          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 초저(G1~G3)·초고(G4~G6)·중등(G7~G12)은 따로 순위를 매깁니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 희월 정산·조정은 빼고 셉니다.</p>
         </div>
       </div>
 
