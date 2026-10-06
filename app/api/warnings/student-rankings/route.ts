@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   );
   if (entriesRes.error) return NextResponse.json({ error: "점수 기록을 불러오지 못했습니다." }, { status: 500 });
 
-  // 초등·중등은 따로 순위를 매긴다 (학년대가 달라 한 줄로 세우면 비교가 안 된다).
+  // 초저·초고·중등은 따로 순위를 매긴다 (학년대가 달라 한 줄로 세우면 비교가 안 된다).
   const divisions = SCHOOL_DIVISIONS.map((division) => ({
     ...division,
     ...buildStudentRanking(entriesRes.data, students.filter((student) => schoolDivision(student.grade) === division.key), kind),
