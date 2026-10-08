@@ -74,6 +74,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetFeedback, setResetFeedback] = useState<Feedback | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AccountSummary | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -312,6 +313,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
     setResetTarget(null);
     setNewPassword("");
     setConfirmPassword("");
+    setShowResetPassword(false);
     setResetFeedback(null);
   }
 
@@ -558,9 +560,10 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
               <div><dt>대상 권한</dt><dd>{resetTarget.role ? roleLabels[resetTarget.role] : "권한 없음"}</dd></div>
             </dl>
             <label htmlFor="new-password">새 임시 비밀번호</label>
-            <input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required autoFocus />
+            <input id="new-password" type={showResetPassword ? "text" : "password"} autoComplete="new-password" enterKeyHint="next" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); document.getElementById("confirm-password")?.focus(); } }} required />
             <label htmlFor="confirm-password">새 임시 비밀번호 확인</label>
-            <input id="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <input id="confirm-password" type={showResetPassword ? "text" : "password"} autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <label className="show-password-toggle"><input type="checkbox" checked={showResetPassword} onChange={(e) => setShowResetPassword(e.target.checked)} /> 입력한 비밀번호 보기</label>
             {resetFeedback && <p role="alert" className={resetFeedback.type === "success" ? "success-message" : "form-error"}>{resetFeedback.text}</p>}
             <div className="modal-actions">
               <button type="button" className="secondary" onClick={closeResetModal} disabled={resetSubmitting}>취소</button>
