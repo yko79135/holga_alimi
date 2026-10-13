@@ -91,6 +91,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<Feedback | null>(null);
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
+  const [pushTests, setPushTests] = useState<Record<string, { pending: boolean; lines: string[]; ok: boolean }>>({});
 
   const loadAccounts = useCallback(async () => {
     setDirectoryLoading(true);
@@ -220,6 +221,27 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       setFeedback({ type: "error", text: error instanceof Error ? error.message : "계정 복구에 실패했습니다." });
     } finally {
       setRepairingId(null);
+    }
+  }
+
+  async function sendTestPush(account: AccountSummary) {
+    setPushTests((current) => ({ ...current, [account.id]: { pending: true, lines: [], ok: true } }));
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(account.id)}/push-test`, { method: "POST" });
+      const result = await parseApiResponse(response);
+      if (!response.ok) throw new Error(result.error || "테스트 알림을 보내지 못했습니다.");
+      const devices = ((result as { devices?: unknown }).devices || []) as { service: string; device: string; previousSuccessAt: string | null; ok: boolean; gone: boolean; error: string | null }[];
+      const lines = devices.length
+        ? devices.map((d) => {
+            const last = d.previousSuccessAt ? ` · 이전 성공 ${new Date(d.previousSuccessAt).toLocaleString("ko-KR")}` : "";
+            if (d.ok) return `${d.device}(${d.service}): 알림 서버가 받았습니다${last}. 기기에 안 뜨면 기기 알림·절전 설정 문제입니다.`;
+            if (d.gone) return `${d.device}(${d.service}): 구독이 만료되어 삭제했습니다. 본인이 앱 알림 켜기를 다시 눌러야 합니다.`;
+            return `${d.device}(${d.service}): 알림 서버가 거부했습니다 — ${d.error}. 본인이 앱 알림 켜기를 다시 눌러야 합니다.`;
+          })
+        : ["알림을 켠 기기가 없습니다. 본인이 내 계정 → 앱 알림 켜기를 눌러야 합니다."];
+      setPushTests((current) => ({ ...current, [account.id]: { pending: false, lines, ok: devices.some((d) => d.ok) } }));
+    } catch (error) {
+      setPushTests((current) => ({ ...current, [account.id]: { pending: false, lines: [error instanceof Error ? error.message : "테스트 알림을 보내지 못했습니다."], ok: false } }));
     }
   }
 
@@ -409,6 +431,16 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
                     <button type="button" className="secondary" onClick={() => repairAccount(account)} disabled={repairingId === account.id}>{repairingId === account.id ? "저장 중..." : "프로필 복구"}</button>
                   </div>
                 )}
+                {account.authExists && (
+                  <div className="account-actions">
+                    <button type="button" className="secondary" onClick={() => sendTestPush(account)} disabled={Boolean(pushTests[account.id]?.pending)}>{pushTests[account.id]?.pending ? "보내는 중..." : "테스트 알림 보내기"}</button>
+                  </div>
+                )}
+                {pushTests[account.id]?.lines.length ? (
+                  <div role="status" className={`push-test-result ${pushTests[account.id].ok ? "success-message" : "form-error"}`}>
+                    {pushTests[account.id].lines.map((line, i) => <p key={i}>{line}</p>)}
+                  </div>
+                ) : null}
                 {account.id !== userId && account.authExists && (
                   <div className="account-actions">
                     {!account.roles?.includes("parent") && <button type="button" className="secondary" onClick={() => addRole(account, "parent")} disabled={Boolean(rolePending[account.id])}>학부모 권한 및 학생 연결</button>}
