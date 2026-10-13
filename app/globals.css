@@ -942,6 +942,10 @@ h3 {
   display: grid;
   gap: 10px;
 }
+/* Push service error bodies can be long JSON with no spaces. */
+.push-test-result {
+  overflow-wrap: anywhere;
+}
 .account-meta {
   display: flex;
   flex-wrap: wrap;
