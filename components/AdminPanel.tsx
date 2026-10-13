@@ -41,6 +41,32 @@ type InviteSummary = {
 };
 
 const roleLabels: Record<Role, string> = { admin: "관리자", teacher: "교사", parent: "학부모" };
+
+type DeviceStatus = "ok" | "ios_bookmark" | "notifications_off" | "blocked" | "unsupported" | "unknown";
+type DeviceInfo = { platform: string; standalone: boolean; permission: string; subscribed: boolean; lastSeenAt: string };
+type PersonDeviceStatus = { id: string; name: string; roles: Role[]; status: DeviceStatus; lastSeenAt: string | null; devices: DeviceInfo[] };
+const deviceStatusLabels: Record<DeviceStatus, string> = {
+  ok: "정상",
+  ios_bookmark: "iPhone 옛 아이콘·Safari",
+  notifications_off: "알림 꺼짐",
+  blocked: "알림 차단됨",
+  unsupported: "알림 안 되는 브라우저",
+  unknown: "기록 없음",
+};
+const deviceStatusFixes: Record<DeviceStatus, string> = {
+  ok: "",
+  ios_bookmark: "홈 화면 아이콘을 지우고, Safari에서 로그인한 뒤 공유 → 홈 화면에 추가 → 새 \"홀가 포털\" 아이콘으로 열어 앱 알림 켜기.",
+  notifications_off: "내 계정 → 앱 알림 켜기를 누르고 허용.",
+  blocked: "휴대폰 설정에서 이 앱(또는 브라우저)의 알림을 허용한 뒤 앱 알림 켜기.",
+  unsupported: "Android는 Chrome으로, iPhone은 홈 화면 앱으로 열어 앱 알림 켜기.",
+  unknown: "이 기능이 생긴 뒤로 아직 앱을 열지 않았습니다. 앱을 한 번 열면 상태가 나타납니다.",
+};
+
+function describeDevice(d: DeviceInfo) {
+  const kind = d.platform === "ios" ? (d.standalone ? "iPhone 홈 화면 앱" : "iPhone Safari·옛 아이콘") : d.platform === "android" ? (d.standalone ? "Android 설치 앱" : "Android 브라우저") : "컴퓨터·기타";
+  const state = d.subscribed ? "알림 켜짐" : d.permission === "denied" ? "알림 차단" : d.permission === "unsupported" ? "알림 불가" : "알림 꺼짐";
+  return `${kind} · ${state} · ${new Date(d.lastSeenAt).toLocaleString("ko-KR")}`;
+}
 const statusLabels: Record<Status, string> = { active: "정상", missing_profile: "프로필 없음", missing_role: "권한 확인 필요", unconfirmed_email: "이메일 미확인", inconsistent: "정보 불일치" };
 const repairableStatuses: Status[] = ["missing_profile", "missing_role", "inconsistent"];
 const inviteStatusLabels: Record<InviteStatus, string> = { active: "사용 가능", expired: "만료됨", revoked: "취소됨" };
@@ -91,6 +117,10 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<Feedback | null>(null);
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
+  const [deviceStatuses, setDeviceStatuses] = useState<PersonDeviceStatus[]>([]);
+  const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
+  const [deviceStatusError, setDeviceStatusError] = useState("");
+  const [showAllDeviceStatuses, setShowAllDeviceStatuses] = useState(false);
   const [pushTests, setPushTests] = useState<Record<string, { pending: boolean; lines: string[]; ok: boolean }>>({});
 
   const loadAccounts = useCallback(async () => {
@@ -223,6 +253,25 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       setRepairingId(null);
     }
   }
+
+  const loadDeviceStatuses = useCallback(async () => {
+    setDeviceStatusLoading(true);
+    setDeviceStatusError("");
+    try {
+      const response = await fetch("/api/admin/devices", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "기기 상태를 불러오지 못했습니다.");
+      setDeviceStatuses(result.people || []);
+    } catch (error) {
+      setDeviceStatusError(error instanceof Error ? error.message : "기기 상태를 불러오지 못했습니다.");
+    } finally {
+      setDeviceStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDeviceStatuses();
+  }, [loadDeviceStatuses]);
 
   async function sendTestPush(account: AccountSummary) {
     setPushTests((current) => ({ ...current, [account.id]: { pending: true, lines: [], ok: true } }));
@@ -455,6 +504,35 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             );
           })}
           {!accounts.length && <div className="empty-state">표시할 계정이 없습니다.</div>}
+        </div>
+      </section>
+
+      <section className="content-card">
+        <div className="section-heading"><div><p className="eyebrow">APP STATUS</p><h2>앱 설치·알림 상태</h2></div><button type="button" className="secondary" onClick={loadDeviceStatuses} disabled={deviceStatusLoading}>{deviceStatusLoading ? "확인 중..." : "새로고침"}</button></div>
+        <p className="muted">각자 앱을 열 때 그 기기의 상태가 기록됩니다. 알림을 못 받는 사람에게 아래 방법을 안내해 주세요. 한 사람이 기기를 여러 개 쓰면 하나라도 알림이 켜져 있으면 정상으로 봅니다.</p>
+        <div className="account-meta">
+          {(Object.keys(deviceStatusLabels) as DeviceStatus[]).map((status) => (
+            <span className="pill" key={status}>{deviceStatusLabels[status]} {deviceStatuses.filter((p) => p.status === status).length}</span>
+          ))}
+        </div>
+        <label className="check-card"><input type="checkbox" checked={showAllDeviceStatuses} onChange={(e) => setShowAllDeviceStatuses(e.target.checked)} /><span>정상인 사람도 보기</span></label>
+        {deviceStatusError && <p role="alert" className="form-error">{deviceStatusError}</p>}
+        <div className="account-list">
+          {deviceStatuses.filter((p) => showAllDeviceStatuses || p.status !== "ok").map((person) => (
+            <article className="account-card" key={person.id}>
+              <div>
+                <strong>{person.name}</strong>
+                <span>{person.roles.map((r) => <span className={`role-badge role-${r}`} key={r}>{roleLabels[r]}</span>)}</span>
+              </div>
+              <div className="account-meta">
+                <span className="pill">{deviceStatusLabels[person.status]}</span>
+                {person.lastSeenAt && <small>마지막 접속 {new Date(person.lastSeenAt).toLocaleString("ko-KR")}</small>}
+              </div>
+              {deviceStatusFixes[person.status] && <p className="muted device-fix">{deviceStatusFixes[person.status]}</p>}
+              {person.devices.map((d, i) => <small key={i}>{describeDevice(d)}</small>)}
+            </article>
+          ))}
+          {!deviceStatusLoading && !deviceStatuses.some((p) => showAllDeviceStatuses || p.status !== "ok") && <div className="empty-state">표시할 사람이 없습니다.</div>}
         </div>
       </section>
 

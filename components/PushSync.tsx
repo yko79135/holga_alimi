@@ -16,6 +16,47 @@ function promptDismissedRecently() {
   }
 }
 
+const DEVICE_KEY = "holy-guide-device-key";
+
+type Platform = "ios" | "android" | "other";
+type Permission = "granted" | "default" | "denied" | "unsupported";
+
+function platformOf(): Platform {
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "ios";
+  return /Android/.test(navigator.userAgent) ? "android" : "other";
+}
+
+function isStandalone() {
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+}
+
+/** A random id kept in this browser's storage, so each install reports as one device. iOS keeps
+ * separate storage for a home-screen app and Safari, so those count as two devices -- which is
+ * what the admin list needs to tell an old Safari bookmark apart from the real app. */
+function deviceKey() {
+  try {
+    let key = window.localStorage.getItem(DEVICE_KEY);
+    if (!key) {
+      key = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+      window.localStorage.setItem(DEVICE_KEY, key);
+    }
+    return key;
+  } catch {
+    // No storage (private mode): skip reporting rather than log a new "device" on every open.
+    return null;
+  }
+}
+
+function report(state: { platform: Platform; standalone: boolean; permission: Permission; subscribed: boolean }) {
+  const key = deviceKey();
+  if (!key) return;
+  fetch("/api/devices/heartbeat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceKey: key, ...state }),
+  }).catch(() => undefined);
+}
+
 /** Runs once each time the dashboard opens. If this device already allows notifications, it
  * makes sure the browser holds a push subscription (creating one if the home-screen app was
  * reinstalled or the browser dropped it) and re-saves it to the server, which refreshes
@@ -24,31 +65,34 @@ function promptDismissedRecently() {
  * one, and it repairs the device without anyone pressing 앱 알림 켜기 again.
  *
  * If the device has never been asked, a small banner points to 내 계정 → 앱 알림 켜기 (the
- * permission prompt itself needs a tap there; iOS ignores it outside a user gesture). On an
- * iPhone outside a home-screen app, it explains how to add one instead. */
-/** An iPhone/iPad page opened in Safari (or from a plain bookmark icon that still shows the
- * address bar) can never receive push: iOS only allows it in an app added with 홈 화면에 추가.
- * There PushManager doesn't exist at all, so without this check such a device got no hint. */
-function isIosOutsideHomeScreenApp() {
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || window.matchMedia("(display-mode: standalone)").matches;
-  return ios && !standalone;
-}
-
+ * permission prompt itself needs a tap there; iOS ignores it outside a user gesture). An
+ * iPhone/iPad outside a home-screen app (Safari, or an old bookmark icon that still shows the
+ * address bar) can never receive push -- iOS doesn't even expose PushManager there -- so it gets
+ * instructions to add the app instead.
+ *
+ * Either way it reports the device's state to /api/devices/heartbeat for the admin list. */
 export default function PushSync() {
   const [prompt, setPrompt] = useState<"enable" | "install" | null>(null);
 
   useEffect(() => {
-    if (isIosOutsideHomeScreenApp()) {
+    const platform = platformOf();
+    const standalone = isStandalone();
+
+    if (platform === "ios" && !standalone) {
       if (!promptDismissedRecently()) setPrompt("install");
+      report({ platform, standalone, permission: "unsupported", subscribed: false });
       return;
     }
-    if (!pushSupported()) return;
-    if (Notification.permission === "default") {
-      if (!promptDismissedRecently()) setPrompt("enable");
+    if (!pushSupported()) {
+      report({ platform, standalone, permission: "unsupported", subscribed: false });
       return;
     }
-    if (Notification.permission !== "granted") return;
+    const permission = Notification.permission as Permission;
+    if (permission !== "granted") {
+      if (permission === "default" && !promptDismissedRecently()) setPrompt("enable");
+      report({ platform, standalone, permission, subscribed: false });
+      return;
+    }
 
     const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!isValidVapidPublicKey(key)) return;
@@ -58,12 +102,15 @@ export default function PushSync() {
       const subscription =
         (await registration.pushManager.getSubscription()) ??
         (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }));
-      await fetch("/api/push/subscribe", {
+      const response = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
       });
-    })().catch(() => undefined);
+      return response.ok;
+    })()
+      .catch(() => false)
+      .then((subscribed) => report({ platform, standalone, permission, subscribed }));
   }, []);
 
   if (!prompt) return null;
