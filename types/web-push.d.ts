@@ -4,7 +4,7 @@ declare module "web-push" {
     keys: { p256dh: string; auth: string };
   };
 
-  export type RequestOptions = { TTL?: number };
+  export type RequestOptions = { TTL?: number; urgency?: "very-low" | "low" | "normal" | "high" };
 
   export function setVapidDetails(subject: string, publicKey: string, privateKey: string): void;
   export function sendNotification(subscription: PushSubscription, payload?: string | Buffer, options?: RequestOptions): Promise<unknown>;

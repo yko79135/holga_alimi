@@ -9,6 +9,26 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil((async () => { const all = await clients.matchAll({ type: 'window', includeUncontrolled: true }); for (const client of all) { if ('focus' in client) { await client.focus(); if ('navigate' in client) return client.navigate(url); } } return clients.openWindow(url); })());
 });
 
+// The browser can replace a push subscription on its own (expiry, key rotation). Without this the
+// server keeps sending to the dead endpoint and the device silently stops getting notifications.
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil((async () => {
+    const previousEndpoint = event.oldSubscription ? event.oldSubscription.endpoint : null;
+    let subscription = event.newSubscription;
+    if (!subscription) {
+      const applicationServerKey = event.oldSubscription && event.oldSubscription.options ? event.oldSubscription.options.applicationServerKey : null;
+      if (!applicationServerKey) return;
+      subscription = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    }
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...subscription.toJSON(), previousEndpoint }),
+    });
+  })());
+});
+
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
