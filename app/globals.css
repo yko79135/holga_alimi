@@ -964,6 +964,10 @@ h3 {
   display: grid;
   gap: 10px;
 }
+/* Admin "앱 설치·알림 상태" instructions: break between Korean words, not inside them. */
+.device-fix {
+  word-break: keep-all;
+}
 /* Push service error bodies can be long JSON with no spaces. */
 .push-test-result {
   overflow-wrap: anywhere;

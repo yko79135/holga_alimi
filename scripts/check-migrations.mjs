@@ -116,6 +116,8 @@ const PROBES = {
     `exists (select 1 from information_schema.columns where table_schema='public' and table_name='push_subscriptions' and column_name='last_error')`,
   "20261013_push_subscription_last_seen.sql":
     `exists (select 1 from information_schema.columns where table_schema='public' and table_name='push_subscriptions' and column_name='last_seen_at')`,
+  "20261013_client_devices.sql":
+    `to_regclass('public.client_devices') is not null`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.
