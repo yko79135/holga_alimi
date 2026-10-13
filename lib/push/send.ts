@@ -6,10 +6,10 @@ import { buildEarlyDismissalPayload, buildReplyPushPayload, buildSafeNoticePaylo
 import { audienceIncludesParents, audienceIncludesStaff } from "@/lib/notices";
 
 type Notice = { id: string; title: string; body: string; target_scope: string; target_audience?: string | null; target_grade: string | null; created_by?: string | null };
-type Sub = { id: string; endpoint: string; p256dh: string; auth: string; user_id: string };
+export type Sub = { id: string; endpoint: string; p256dh: string; auth: string; user_id: string };
 type PushResult = { sent: number; unsubscribed: number; failed: number; recipients: number };
 
-function configureWebPush() {
+export function configureWebPush() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || "mailto:admin@example.com";
@@ -50,6 +50,59 @@ async function resolveStaffRecipientIds() {
   return Array.from(new Set((data || []).map((r: any) => r.profile_id)));
 }
 
+export type DeliveryResult = { subscriptionId: string; ok: boolean; gone: boolean; statusCode: number; error: string | null };
+
+function describePushError(error: unknown) {
+  const e = error as { statusCode?: unknown; body?: unknown; message?: unknown };
+  const statusCode = typeof e?.statusCode === "number" ? e.statusCode : 0;
+  const detail = typeof e?.body === "string" && e.body.trim() ? e.body.trim() : typeof e?.message === "string" ? e.message : String(error);
+  return { statusCode, error: `${statusCode || "network"} ${detail}`.slice(0, 500) };
+}
+
+/** Sends one payload to each subscription and records the outcome on its row: last_success_at on
+ * a 2xx, last_failure_at + last_error (the push service's status and body) otherwise. A 404/410
+ * means the browser dropped the subscription, so that row is deleted. Without these records a
+ * failure other than 404/410 was invisible -- the row stayed, the user saw "알림이 켜져 있습니다",
+ * and nothing arrived. Bookkeeping errors are ignored so they never block delivery itself. */
+export async function deliverToSubscriptions(subs: Sub[], payloadJson: string): Promise<DeliveryResult[]> {
+  const admin = createAdminClient();
+  const results: DeliveryResult[] = [];
+
+  for (let i = 0; i < subs.length; i += 5) {
+    await Promise.all(
+      subs.slice(i, i + 5).map(async (sub) => {
+        try {
+          // urgency high: Android Doze / Samsung battery saver and iOS Low Power hold back
+          // normal-priority pushes, sometimes for hours.
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payloadJson,
+            { TTL: 86400, urgency: "high" },
+          );
+          results.push({ subscriptionId: sub.id, ok: true, gone: false, statusCode: 201, error: null });
+        } catch (error) {
+          const { statusCode, error: message } = describePushError(error);
+          const gone = statusCode === 404 || statusCode === 410;
+          console.error(`[push] ${gone ? "subscription gone" : "delivery failed"} user=${sub.user_id} host=${new URL(sub.endpoint).host}: ${message}`);
+          results.push({ subscriptionId: sub.id, ok: false, gone, statusCode, error: message });
+        }
+      }),
+    );
+  }
+
+  const now = new Date().toISOString();
+  const okIds = results.filter((r) => r.ok).map((r) => r.subscriptionId);
+  const goneIds = results.filter((r) => r.gone).map((r) => r.subscriptionId);
+  const failures = results.filter((r) => !r.ok && !r.gone);
+  await Promise.all([
+    okIds.length ? admin.from("push_subscriptions").update({ last_success_at: now }).in("id", okIds) : null,
+    goneIds.length ? admin.from("push_subscriptions").delete().in("id", goneIds) : null,
+    ...failures.map((r) => admin.from("push_subscriptions").update({ last_failure_at: now, last_error: r.error }).eq("id", r.subscriptionId)),
+  ]);
+
+  return results;
+}
+
 async function pushToUserIds(userIds: string[], payload: SafePushPayload): Promise<PushResult> {
   if (!userIds.length) return { sent: 0, unsubscribed: 0, failed: 0, recipients: 0 };
   if (!configureWebPush()) return { sent: 0, unsubscribed: 0, failed: userIds.length, recipients: userIds.length };
@@ -58,30 +111,9 @@ async function pushToUserIds(userIds: string[], payload: SafePushPayload): Promi
   const { data } = await admin.from("push_subscriptions").select("id,endpoint,p256dh,auth,user_id").in("user_id", userIds);
   const subs = (data || []) as Sub[];
   const payloadJson = JSON.stringify(payload);
-  let sent = 0;
-  let failed = 0;
-  const invalid: string[] = [];
-
-  for (let i = 0; i < subs.length; i += 5) {
-    await Promise.all(
-      subs.slice(i, i + 5).map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payloadJson,
-            { TTL: 86400 },
-          );
-          sent++;
-        } catch (error) {
-          const statusCode = typeof (error as { statusCode?: unknown }).statusCode === "number" ? (error as { statusCode: number }).statusCode : 0;
-          if (statusCode === 404 || statusCode === 410) invalid.push(sub.id);
-          else failed++;
-        }
-      }),
-    );
-  }
-
-  if (invalid.length) await admin.from("push_subscriptions").delete().in("id", invalid);
+  const results = await deliverToSubscriptions(subs, payloadJson);
+  const sent = results.filter((r) => r.ok).length;
+  const failed = results.filter((r) => !r.ok && !r.gone).length;
 
   return {
     sent,

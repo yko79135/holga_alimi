@@ -112,6 +112,8 @@ const PROBES = {
   "20260930_attendance_excused_absent.sql":
     `exists (select 1 from pg_enum where enumtypid='public.attendance_status'::regtype and enumlabel='excused_absent')
      and exists (select 1 from information_schema.columns where table_schema='public' and table_name='early_dismissal_requests' and column_name='attendance_recorded_status')`,
+  "20261013_push_delivery_status.sql":
+    `exists (select 1 from information_schema.columns where table_schema='public' and table_name='push_subscriptions' and column_name='last_error')`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.

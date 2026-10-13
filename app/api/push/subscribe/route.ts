@@ -33,7 +33,16 @@ export async function POST(req: Request) {
     updated_at: new Date().toISOString(),
   }, { onConflict: "endpoint" });
 
-  return NextResponse.json(error ? { error: pushTableError(error) } : { ok: true }, { status: error ? 500 : 200 });
+  if (error) return NextResponse.json({ error: pushTableError(error) }, { status: 500 });
+
+  // The browser replaced its subscription (a fresh 앱 알림 켜기, or the service worker's
+  // pushsubscriptionchange): the old endpoint is dead, so stop sending to it.
+  const previousEndpoint = String(b?.previousEndpoint || "");
+  if (previousEndpoint && previousEndpoint !== endpoint) {
+    await a.s.from("push_subscriptions").delete().eq("user_id", a.user.id).eq("endpoint", previousEndpoint);
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: Request) {

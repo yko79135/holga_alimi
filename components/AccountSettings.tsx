@@ -93,6 +93,7 @@ export default function AccountSettings({ email, roles, notice }: { email: strin
   const [pushState, setPushState] = useState<PushState>("idle");
   const [pushError, setPushError] = useState("");
   const [pushBusy, setPushBusy] = useState(false);
+  const [testResult, setTestResult] = useState("");
   const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   const push = useMemo(() => pushError || PUSH_MESSAGES[pushState], [pushError, pushState]);
@@ -228,20 +229,22 @@ export default function AccountSettings({ email, roles, notice }: { email: strin
       }
 
       setPushState("subscribing");
-      let subscription = await readyRegistration.pushManager.getSubscription();
-      if (!subscription) {
-        subscription = await readyRegistration.pushManager
-          .subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) })
-          .catch(() => {
-            throw new Error("알림 구독 생성에 실패했습니다.");
-          });
-      }
+      // Always start from a fresh subscription. Re-saving the one the browser already holds
+      // cannot repair a device whose endpoint the push service has quietly stopped delivering
+      // to -- pressing 앱 알림 켜기 again is exactly what someone does when alerts stop.
+      const previous = await readyRegistration.pushManager.getSubscription();
+      await previous?.unsubscribe().catch(() => undefined);
+      const subscription = await readyRegistration.pushManager
+        .subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) })
+        .catch(() => {
+          throw new Error("알림 구독 생성에 실패했습니다.");
+        });
 
       setPushState("saving");
       const saveResponse = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(subscription),
+        body: JSON.stringify({ ...subscription.toJSON(), previousEndpoint: previous?.endpoint }),
       }).catch(() => {
         throw new Error("네트워크 오류가 발생했습니다.");
       });
@@ -258,6 +261,31 @@ export default function AccountSettings({ email, roles, notice }: { email: strin
       setPushState("enabled");
     } catch (error) {
       setPushState("failed");
+      setPushError(error instanceof Error ? error.message : "네트워크 오류가 발생했습니다.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function testPush() {
+    setPushError("");
+    setTestResult("");
+    setPushBusy(true);
+    try {
+      const reg = await timeout(navigator.serviceWorker.ready, WORKER_TIMEOUT_MS, "Service Worker가 준비되지 않았습니다.");
+      const sub = await reg.pushManager.getSubscription();
+      const response = await fetch("/api/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub?.endpoint }),
+      });
+      if (!response.ok) throw new Error(await getJsonError(response, "테스트 알림을 보내지 못했습니다."));
+      const r = await response.json();
+      if (!sub || !r.thisDeviceSaved) setTestResult("이 기기는 알림 구독이 저장되어 있지 않습니다. 앱 알림 켜기를 눌러 주세요.");
+      else if (r.thisDevice?.ok) setTestResult("테스트 알림을 보냈습니다. 몇 초 안에 알림이 뜨지 않으면 기기의 알림·절전 설정을 확인하거나 앱 알림 켜기를 다시 눌러 주세요.");
+      else if (r.thisDevice?.gone) setTestResult("이 기기의 알림 구독이 만료되었습니다. 앱 알림 켜기를 다시 눌러 주세요.");
+      else setTestResult(`알림 서버가 전송을 거부했습니다. 앱 알림 켜기를 다시 눌러 주세요. (${r.thisDevice?.error ?? "알 수 없는 오류"})`);
+    } catch (error) {
       setPushError(error instanceof Error ? error.message : "네트워크 오류가 발생했습니다.");
     } finally {
       setPushBusy(false);
@@ -331,9 +359,12 @@ export default function AccountSettings({ email, roles, notice }: { email: strin
         <p className="muted">알림은 버튼을 누른 뒤에만 권한을 요청합니다. iPhone/iPad는 공유 → 홈 화면에 추가 후 홈 화면 앱에서 알림을 켜야 합니다. OS, 브라우저, 네트워크 설정에 따라 전달이 보장되지 않으며 앱 안의 읽지 않은 알림이 항상 대체 수단입니다.</p>
         <div className="topbar-actions">
           <button className="primary" onClick={enablePush} disabled={pushBusy}>{pushBusy ? "처리 중..." : "앱 알림 켜기"}</button>
+          {pushState === "enabled" && <button className="secondary" onClick={testPush} disabled={pushBusy}>테스트 알림 보내기</button>}
           <button className="secondary" onClick={disablePush} disabled={pushBusy}>앱 알림 끄기</button>
           <button className="secondary" onClick={() => setShowInstallHelp(!showInstallHelp)}>홈 화면 추가 방법 보기</button>
         </div>
+        {testResult && <p role="status" className="muted">{testResult}</p>}
+        <p className="muted">알림이 오다가 안 오면 앱 알림 켜기를 다시 누르세요. 이 기기의 알림 구독을 새로 만듭니다.</p>
         {showInstallHelp && (
           <div className="install-help">
             <div>
