@@ -8,7 +8,12 @@ export const metadata: Metadata = {
   title: schoolName,
   description: "가정통신문과 학생별 생활지도 알림을 안전하게 전달하는 학부모 포털",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: schoolName, statusBarStyle: "default" },
+  // Same name as manifest.webmanifest's short_name, so the home-screen icon reads "홀가 포털"
+  // whichever of the two iOS uses.
+  appleWebApp: { capable: true, title: "홀가 포털", statusBarStyle: "default" },
+  // Next only emits the generic mobile-web-app-capable tag; older iOS needs the apple- one to
+  // open the home-screen icon as an app (no address bar) when it doesn't read the manifest.
+  other: { "apple-mobile-web-app-capable": "yes" },
   icons: {
     icon: [
       {
