@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { AppRole } from "@/lib/roles";
 import { resolveAuthNotice } from "@/lib/auth/notices";
+import { isValidVapidPublicKey, urlBase64ToUint8Array } from "@/lib/push/client";
 
 type PushState =
   | "idle"
@@ -31,23 +32,6 @@ const PUSH_MESSAGES: Record<PushState, string> = {
 };
 
 const WORKER_TIMEOUT_MS = 8000;
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-}
-
-function isValidVapidPublicKey(key: string | undefined): key is string {
-  if (!key) return false;
-  try {
-    const bytes = urlBase64ToUint8Array(key);
-    return bytes.length === 65 && bytes[0] === 4;
-  } catch {
-    return false;
-  }
-}
 
 function timeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {

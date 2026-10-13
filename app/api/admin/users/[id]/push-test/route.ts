@@ -4,7 +4,7 @@ import { requireAdmin, adminJsonError } from "@/lib/admin/require-admin";
 import { canSeeProfile } from "@/lib/admin/test-fixtures";
 import { configureWebPush, deliverToSubscriptions, type Sub } from "@/lib/push/send";
 
-type SubRow = Sub & { user_agent: string | null; last_success_at: string | null };
+type SubRow = Sub & { user_agent: string | null; last_success_at: string | null; last_seen_at: string | null };
 
 /** For "○○님은 알림이 안 와요": sends a fixed test notification to that account's devices and
  * returns what each push service answered, plus when the device last received anything. The
@@ -19,7 +19,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { data, error } = await admin
     .from("push_subscriptions")
-    .select("id,endpoint,p256dh,auth,user_id,user_agent,last_success_at")
+    .select("id,endpoint,p256dh,auth,user_id,user_agent,last_success_at,last_seen_at")
     .eq("user_id", id);
   if (error) return adminJsonError("알림 구독을 불러오지 못했습니다.", 500);
   const subs = (data || []) as SubRow[];
@@ -39,6 +39,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
         service: new URL(sub.endpoint).host.includes("apple") ? "Apple" : new URL(sub.endpoint).host.includes("google") ? "Google" : new URL(sub.endpoint).host,
         device: /iPhone|iPad/.test(sub.user_agent ?? "") ? "iPhone/iPad" : /Android/.test(sub.user_agent ?? "") ? "Android" : "기타",
         previousSuccessAt: sub.last_success_at,
+        lastSeenAt: sub.last_seen_at,
         ok: r?.ok ?? false,
         gone: r?.gone ?? false,
         error: r?.error ?? null,

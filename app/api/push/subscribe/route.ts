@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     auth: String(keys.auth),
     user_agent: req.headers.get("user-agent"),
     updated_at: new Date().toISOString(),
+    last_seen_at: new Date().toISOString(),
   }, { onConflict: "endpoint" });
 
   if (error) return NextResponse.json({ error: pushTableError(error) }, { status: 500 });

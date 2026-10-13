@@ -230,11 +230,14 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
       const response = await fetch(`/api/admin/users/${encodeURIComponent(account.id)}/push-test`, { method: "POST" });
       const result = await parseApiResponse(response);
       if (!response.ok) throw new Error(result.error || "테스트 알림을 보내지 못했습니다.");
-      const devices = ((result as { devices?: unknown }).devices || []) as { service: string; device: string; previousSuccessAt: string | null; ok: boolean; gone: boolean; error: string | null }[];
+      const devices = ((result as { devices?: unknown }).devices || []) as { service: string; device: string; previousSuccessAt: string | null; lastSeenAt: string | null; ok: boolean; gone: boolean; error: string | null }[];
       const lines = devices.length
         ? devices.map((d) => {
             const last = d.previousSuccessAt ? ` · 이전 성공 ${new Date(d.previousSuccessAt).toLocaleString("ko-KR")}` : "";
-            if (d.ok) return `${d.device}(${d.service}): 알림 서버가 받았습니다${last}. 기기에 안 뜨면 기기 알림·절전 설정 문제입니다.`;
+            const seen = d.lastSeenAt ? ` · 마지막 앱 사용 ${new Date(d.lastSeenAt).toLocaleString("ko-KR")}` : " · 앱 사용 기록 없음";
+            // Push services accept messages for an install that's gone from the phone, so a
+            // device that hasn't opened the app in a long time is the likely dead one.
+            if (d.ok) return `${d.device}(${d.service}): 알림 서버가 받았습니다${last}${seen}. 기기에 안 뜨면 기기 알림 설정 문제이거나, 앱 아이콘을 다시 설치해 이 구독이 끊긴 경우입니다.`;
             if (d.gone) return `${d.device}(${d.service}): 구독이 만료되어 삭제했습니다. 본인이 앱 알림 켜기를 다시 눌러야 합니다.`;
             return `${d.device}(${d.service}): 알림 서버가 거부했습니다 — ${d.error}. 본인이 앱 알림 켜기를 다시 눌러야 합니다.`;
           })
