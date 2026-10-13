@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
+import PushSync from "@/components/PushSync";
 import ParentDashboard from "@/components/ParentDashboard";
 import StaffDashboard from "@/components/StaffDashboard";
 import { type AppRole, type DashboardView, canUseParentView, canUseStaffView, effectiveStaffRole, resolveDashboardView } from "@/lib/roles";
@@ -54,6 +55,7 @@ export default function DashboardShell({ userId, name, roles, legacyRole, initia
   return (
     <main className="app-shell">
       <Header name={name} roles={roles} activeView={safeView} onViewChange={changeView} onLogoClick={goHome} currentPage="dashboard" />
+      <PushSync />
       {safeView === "parent" && canParent ? <ParentDashboard userId={userId} /> : null}
       {safeView === "staff" && canStaff && staffRole ? <StaffDashboard userId={userId} role={staffRole} tab={staffTab} onTabChange={setStaffTab} /> : null}
     </main>
