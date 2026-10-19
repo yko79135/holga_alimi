@@ -15,18 +15,20 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Staff see every request; parents see only their own. Both read through the caller's own
- * Supabase client so RLS -- not this handler -- is the boundary. */
-export async function GET() {
+ * Supabase client so RLS -- not this handler -- is the boundary. A teacher who is also a parent
+ * opens the parent tab with `?scope=mine`, which must show only their own children's requests. */
+export async function GET(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   const roles = await getUserRoles(supabase, user.id);
   const isStaff = roles.includes("admin") || roles.includes("teacher");
   if (!isStaff && !roles.includes("parent")) return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+  const ownOnly = !isStaff || new URL(req.url).searchParams.get("scope") === "mine";
 
   const listQuery = (select: string) => {
     const query = supabase.from("early_dismissal_requests").select(select).order("dismissal_date", { ascending: false }).order("created_at", { ascending: false });
-    return isStaff ? query : query.eq("parent_id", user.id);
+    return ownOnly ? query.eq("parent_id", user.id) : query;
   };
   let { data, error } = await listQuery(REQUEST_SELECT);
   // A database still waiting on the 결석 migration has no request_type; read it the old way
@@ -48,7 +50,7 @@ export async function GET() {
 
   const [homeroomRes, acksRes, namesRes] = await Promise.all([
     grades.length ? supabase.from("homeroom_assignments").select("grade,teacher_name").in("grade", grades) : Promise.resolve({ data: [] as any[] }),
-    isStaff && rows.length
+    !ownOnly && rows.length
       ? supabase.from("early_dismissal_acknowledgements").select("request_id,staff_id,acknowledged_at").in("request_id", rows.map((row) => row.id))
       : Promise.resolve({ data: [] as any[] }),
     // Names only: a parent's RLS view of profiles hides staff, but they still need to see who

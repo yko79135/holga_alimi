@@ -30,7 +30,8 @@ export default function ParentEarlyDismissalRequests({ userId, students }: { use
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/early-dismissal", { cache: "no-store" });
+      // scope=mine: a teacher who is also a parent would otherwise get every family's requests.
+      const response = await fetch("/api/early-dismissal?scope=mine", { cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "신청 목록을 불러오지 못했습니다.");
       setRequests(result.requests || []);
