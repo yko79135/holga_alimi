@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRoles } from "@/lib/roles-server";
 import { adminJsonError, requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isPointKind, normalizeCategoryHint, normalizeCategoryName, sortPointCategories } from "@/lib/warnings/categories";
+import { isPointKind, normalizeCategoryHint, normalizeCategoryName, pointCategoryUsageKey, sortPointCategories } from "@/lib/warnings/categories";
 import { CATEGORY_COLUMNS, toPointCategory } from "@/lib/warnings/point-categories";
 
 export const runtime = "nodejs";
@@ -25,8 +25,15 @@ export async function GET(request: Request) {
   }
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: "카테고리 목록을 불러오지 못했습니다." }, { status: 500 });
-  // Praise rows come back in 가나다 order regardless of sort_order -- see comparePointCategories.
-  return NextResponse.json({ categories: sortPointCategories((data || []).map(toPointCategory)) });
+  // Usage counts span every teacher's records, which a teacher's own session can't read, so they
+  // come from the service-role client. A failure only costs the ordering, not the list.
+  const usage = new Map<string, number>();
+  const { data: usageRows, error: usageError } = await createAdminClient().rpc("point_category_usage");
+  if (usageError) console.error("point-category-usage-failed", { code: usageError.code, message: usageError.message });
+  for (const row of (usageRows || []) as { kind: string; name: string; uses: number }[]) {
+    usage.set(pointCategoryUsageKey(row.kind, row.name), Number(row.uses) || 0);
+  }
+  return NextResponse.json({ categories: sortPointCategories((data || []).map(toPointCategory), usage) });
 }
 
 export async function POST(request: Request) {

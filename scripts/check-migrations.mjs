@@ -118,6 +118,11 @@ const PROBES = {
     `exists (select 1 from information_schema.columns where table_schema='public' and table_name='push_subscriptions' and column_name='last_seen_at')`,
   "20261013_client_devices.sql":
     `to_regclass('public.client_devices') is not null`,
+  "20261021_point_category_usage.sql":
+    `to_regprocedure('public.point_category_usage()') is not null`,
+  "20261021_praise_split_homework_activity.sql":
+    `not exists (select 1 from public.warning_entries where category='과제·활동 성실 수행')
+     and exists (select 1 from public.point_categories where kind='praise' and name='활동 성실히 수행')`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.

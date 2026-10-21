@@ -44,8 +44,8 @@ export const DEFAULT_DISCIPLINE_CATEGORY_POINT_HINTS: Record<string, string> = {
   "미디어 규정": "5점",
 };
 
-/** Kept in 가나다 order to match how praise categories are listed everywhere else (see
- * comparePointCategories). */
+/** Offline fallback only, so there are no usage counts to sort by: kept in 가나다 order, the
+ * tie-break order comparePointCategories uses for praise. */
 export const DEFAULT_PRAISE_CATEGORIES = [
   "과제 성실히 수행",
   "교사 지도에 잘 따름",
@@ -57,6 +57,7 @@ export const DEFAULT_PRAISE_CATEGORIES = [
   "수업 활동 성실히 참여",
   "질문에 훌륭히 답변",
   "친구를 도와줌",
+  "활동 성실히 수행",
 ] as const;
 
 export const POINT_KIND_LABELS: Record<PointKind, string> = { discipline: "훈계 점수", praise: "칭찬 점수" };
@@ -93,18 +94,23 @@ export function fallbackCategoriesForKind(kind: PointKind): PointCategory[] {
   }));
 }
 
-/** Praise categories are listed in 가나다 order rather than by sort_order: they carry no severity
- * ranking, so an alphabetical list is what teachers can scan fastest, and admin-added ones slot
- * into place instead of piling up at the end. Discipline keeps its curated sort_order, which
- * matches the order the rules are written in. */
+/** Tie-break order for categories used equally often (including never-used ones): praise in 가나다
+ * order, discipline by its curated sort_order, which matches the order the rules are written in. */
 export function comparePointCategories(a: PointCategory, b: PointCategory): number {
   if (a.kind !== b.kind) return a.kind === "discipline" ? -1 : 1;
   if (a.kind === "praise") return a.name.localeCompare(b.name, "ko");
   return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ko");
 }
 
-export function sortPointCategories(categories: PointCategory[]): PointCategory[] {
-  return [...categories].sort(comparePointCategories);
+export function pointCategoryUsageKey(kind: string, name: string): string {
+  return `${kind}:${name}`;
+}
+
+/** Most-used categories come first so teachers find the usual picks at the top of the dropdown.
+ * `usage` maps pointCategoryUsageKey(kind, name) to how many point records used that category. */
+export function sortPointCategories(categories: PointCategory[], usage: Map<string, number> = new Map()): PointCategory[] {
+  const uses = (category: PointCategory) => usage.get(pointCategoryUsageKey(category.kind, category.name)) ?? 0;
+  return [...categories].sort((a, b) => (a.kind === b.kind ? uses(b) - uses(a) : 0) || comparePointCategories(a, b));
 }
 
 /** The label shown in the grant form dropdown: "거짓말 (10/5점)" when a hint exists, else the name. */
