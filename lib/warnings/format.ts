@@ -115,3 +115,16 @@ export function buildPointCorrectionFooter(params: { body: string; entries: Arra
   ];
   return lines.join("\n");
 }
+
+/** Swaps the 세부 내용 section of a notice built by buildPointNotice for `detail` (adding the
+ * section when the notice had none, dropping it when `detail` is empty), leaving every other line
+ * -- including the monthly total as it stood when the notice went out -- untouched. Returns null
+ * when the body is not in that shape, e.g. it was already rewritten as a 정정 notice. */
+export function replacePointNoticeDetail(body: string, detail: string) {
+  const totalIndex = Math.max(body.lastIndexOf("\n\n이번 달 칭찬 점수 합계: "), body.lastIndexOf("\n\n이번 달 훈계 점수 합계: "));
+  if (totalIndex < 0 || !/^(부여|차감) 점수: /m.test(body)) return null;
+  const head = body.slice(0, totalIndex);
+  const detailIndex = head.indexOf("\n\n세부 내용\n");
+  const base = detailIndex >= 0 ? head.slice(0, detailIndex) : head;
+  return `${base}${detail ? `\n\n세부 내용\n${detail}` : ""}${body.slice(totalIndex)}`;
+}
