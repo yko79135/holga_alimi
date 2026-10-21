@@ -65,6 +65,9 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
   const [editRemovedIds, setEditRemovedIds] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editFeedback, setEditFeedback] = useState<Feedback | null>(null);
+  const [detailEdit, setDetailEdit] = useState<{ noticeId: string; category: string; detail: string; loaded: boolean } | null>(null);
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailFeedback, setDetailFeedback] = useState<Feedback | null>(null);
   const [loading, setLoading] = useState(false);
   const [studentName, setStudentName] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
@@ -250,6 +253,49 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
       setEditFeedback({ type: "error", text: error instanceof Error ? error.message : "알림 수정에 실패했습니다." });
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  async function startDetailEditing(notice: Notice) {
+    cancelEditing();
+    setDetailFeedback(null);
+    setDetailEdit({ noticeId: notice.id, category: "", detail: "", loaded: false });
+    try {
+      const response = await fetch(`/api/warnings/notice-detail/${encodeURIComponent(notice.id)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "세부사항을 불러오지 못했습니다.");
+      setDetailEdit((current) => current?.noticeId === notice.id ? { noticeId: notice.id, category: result.category || "", detail: result.detail || "", loaded: true } : current);
+    } catch (error) {
+      setDetailFeedback({ type: "error", text: error instanceof Error ? error.message : "세부사항을 불러오지 못했습니다." });
+    }
+  }
+
+  function cancelDetailEditing() {
+    setDetailEdit(null);
+    setDetailFeedback(null);
+  }
+
+  async function saveDetailEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!detailEdit?.loaded || detailSaving) return;
+    setDetailSaving(true);
+    setDetailFeedback(null);
+    try {
+      const response = await fetch(`/api/warnings/notice-detail/${encodeURIComponent(detailEdit.noticeId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ detail: detailEdit.detail }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "세부사항을 수정하지 못했습니다.");
+      if (!result.noticeUpdated) throw new Error(result.message);
+      cancelDetailEditing();
+      setMessage(result.message || "세부사항을 수정했습니다.");
+      await loadNotices();
+    } catch (error) {
+      setDetailFeedback({ type: "error", text: error instanceof Error ? error.message : "세부사항을 수정하지 못했습니다." });
+    } finally {
+      setDetailSaving(false);
     }
   }
 
@@ -530,6 +576,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <input className="record-search" value={recordSearch} onChange={(e) => setRecordSearch(e.target.value)} placeholder="제목·내용·학생 이름 검색" aria-label="발송 기록 검색" />
           </div>
           <p className="field-hint">점수·출석 알림은 학생 한 명마다 한 건씩 자동으로 만들어집니다. 직접 작성해 보낸 알림만 보려면 &ldquo;직접 보낸 알림&rdquo;을 누르세요.</p>
+          {message && <p role="status" className="success-message">{message}</p>}
           <div className="sent-list">
             {visibleNotices.map((notice) => {
               const acks = notice.acknowledgements || [];
@@ -537,6 +584,8 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
               const reachesParents = notice.target_scope !== "school" || audienceIncludesParents(notice.target_audience);
               const isExpanded = !!expandedNoticeIds[notice.id];
               const isEditing = editingNotice?.id === notice.id;
+              const isPointNotice = notice.source_type === "praise_update" || notice.source_type === "warning_update";
+              const isDetailEditing = detailEdit?.noticeId === notice.id;
               const toggleExpanded = () => setExpandedNoticeIds((current) => ({ ...current, [notice.id]: !isExpanded }));
               return <article className="sent-card" key={notice.id}>
                 <div className="sent-top">
@@ -550,10 +599,31 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                 {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
                 <div className="sent-card-actions">
                   <button type="button" className="secondary" onClick={toggleExpanded}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
-                  {/* 점수·출석 알림은 점수 기록에서 문구를 다시 만들어 덮어쓰므로 여기서 고칠 수 없다. */}
+                  {/* 점수·출석 알림은 점수 기록에서 문구를 다시 만들어 덮어쓰므로 본문을 통째로 고칠 수 없다.
+                      칭찬·훈계 점수 알림은 세부사항만 점수 기록과 함께 고친다. */}
                   {!notice.source_type && isEditing && <button type="button" className="secondary" onClick={cancelEditing} disabled={editSaving}>수정 취소</button>}
-                  {!notice.source_type && !isEditing && <button type="button" className="secondary" onClick={() => startEditing(notice)}>내용·첨부 수정</button>}
+                  {!notice.source_type && !isEditing && <button type="button" className="secondary" onClick={() => { cancelDetailEditing(); startEditing(notice); }}>내용·첨부 수정</button>}
+                  {isPointNotice && isDetailEditing && <button type="button" className="secondary" onClick={cancelDetailEditing} disabled={detailSaving}>수정 취소</button>}
+                  {isPointNotice && !isDetailEditing && <button type="button" className="secondary" onClick={() => void startDetailEditing(notice)}>세부사항 수정</button>}
                 </div>
+                {isDetailEditing && (
+                  <form className="notice-edit-form" onSubmit={saveDetailEdit}>
+                    {detailEdit.loaded ? (
+                      <>
+                        <label>사유</label>
+                        <input value={detailEdit.category} disabled />
+                        <label>세부사항</label>
+                        <textarea className="tall" value={detailEdit.detail} onChange={(e) => setDetailEdit({ ...detailEdit, detail: e.target.value })} placeholder="비워 두면 세부사항을 지웁니다." maxLength={2000} />
+                        <p className="field-hint">고친 세부사항은 학부모 화면의 알림과 점수 기록에 바로 반영되고, 수정한 시각이 함께 표시됩니다. 앱 알림은 다시 가지 않습니다. 점수·날짜·수업은 점수 통계에서 고칠 수 있습니다.</p>
+                        <div className="modal-actions">
+                          <button type="button" className="secondary" onClick={cancelDetailEditing} disabled={detailSaving}>취소</button>
+                          <button type="submit" className="primary" disabled={detailSaving}>{detailSaving ? "저장 중..." : "세부사항 저장"}</button>
+                        </div>
+                      </>
+                    ) : !detailFeedback && <p className="muted">세부사항을 불러오는 중...</p>}
+                    {detailFeedback && <p role="alert" className="form-error">{detailFeedback.text}</p>}
+                  </form>
+                )}
                 {isEditing && (
                   <form className="notice-edit-form" onSubmit={saveNoticeEdit}>
                     {notice.type === CUSTOM_NOTICE_TYPE && (

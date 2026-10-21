@@ -5,6 +5,7 @@ import { changeType } from "@/lib/warnings/format";
 import { MAX_DISCIPLINE_POINT_VALUE } from "@/lib/warnings/categories";
 import { isValidDateOnly, termForDate } from "@/lib/warnings/term";
 import { refreshGeneratedPointNotice } from "@/lib/warnings/notice-refresh";
+import { notifyParentsOfPointChange } from "@/lib/warnings/parent-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,19 +33,6 @@ async function loadEntry(admin: ReturnType<typeof createAdminClient>, entryId: s
   if (error) return { error: staffJsonError("점수 내역을 불러오지 못했습니다.", 500) };
   if (!data) return { error: staffJsonError("점수 내역을 찾을 수 없습니다.", 404) };
   return { entry: data };
-}
-
-/** Nudges the affected parents' dashboards to refetch (the table is a transient realtime
- * queue, see supabase/20260714_parent_dashboard_realtime.sql). Best-effort: a failure here
- * must not fail an edit that already landed. */
-async function notifyParents(admin: ReturnType<typeof createAdminClient>, studentId: string, kind: EntryRow["kind"], batchId: string) {
-  const { data, error } = await admin.from("parent_students").select("parent_id").eq("student_id", studentId);
-  if (error || !data?.length) return;
-  const parentIds = Array.from(new Set(data.map((link: { parent_id: string }) => link.parent_id).filter(Boolean)));
-  if (!parentIds.length) return;
-  const eventType = kind === "praise" ? "praise_updated" : "warning_updated";
-  const { error: insertError } = await admin.from("parent_dashboard_events").insert(parentIds.map((parentId) => ({ parent_id: parentId, event_type: eventType, entity_id: batchId })));
-  if (insertError) console.error("warning-entry-parent-event-failed", { batchId, studentId, code: insertError.code, message: insertError.message });
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -123,7 +111,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // the 점수 and 사유 that were first announced. No push goes out -- see refreshGeneratedPointNotice.
   const noticeResult = await refreshGeneratedPointNotice(admin, { batchId: entry.batch_id, studentId: entry.student_id, today: new Date().toISOString().slice(0, 10) });
 
-  await notifyParents(admin, entry.student_id, entry.kind, entry.batch_id);
+  await notifyParentsOfPointChange(admin, entry.student_id, entry.kind, entry.batch_id);
 
   const noticeNote = noticeResult === "updated"
     ? " 학부모 안내문도 정정된 내용으로 갱신했습니다."
@@ -184,7 +172,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     await refreshGeneratedPointNotice(admin, { batchId: entry.batch_id, studentId: entry.student_id, today: new Date().toISOString().slice(0, 10) });
   }
 
-  await notifyParents(admin, entry.student_id, entry.kind, entry.batch_id);
+  await notifyParentsOfPointChange(admin, entry.student_id, entry.kind, entry.batch_id);
 
   const deletedCount = deleted?.length || 0;
   return NextResponse.json({
