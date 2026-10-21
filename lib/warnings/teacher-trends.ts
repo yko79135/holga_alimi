@@ -148,7 +148,10 @@ export function buildTeacherTrendReport(
       topDiscipline: topCategories(bucket, "discipline"),
       topPraise: topCategories(bucket, "praise"),
     }))
-    .sort((a, b) => (b.praise.count + b.discipline.count) - (a.praise.count + a.discipline.count) || a.name.localeCompare(b.name, "ko"));
+    // 칭찬·훈계 점수를 더한 총점 순. 총점이 같으면 건수, 그다음 이름 순.
+    .sort((a, b) => (b.praise.points + b.discipline.points) - (a.praise.points + a.discipline.points)
+      || (b.praise.count + b.discipline.count) - (a.praise.count + a.discipline.count)
+      || a.name.localeCompare(b.name, "ko"));
 
   return {
     weeks,
