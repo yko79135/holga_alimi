@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
+import { ATTACHMENT_ACCEPT, formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 // 같은 파일을 또 골랐는지 판단한다. 브라우저는 고를 때마다 File 객체를 새로 만들기 때문에
 // 객체끼리 비교할 수 없고 이름·크기·수정시각을 본다.
@@ -56,7 +56,7 @@ export default function NoticeAttachmentPicker({ files, onChange, existing = [],
     <div className="attachment-picker">
       <input
         type="file"
-        accept="application/pdf"
+        accept={ATTACHMENT_ACCEPT}
         multiple
         disabled={disabled}
         onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
