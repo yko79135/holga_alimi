@@ -78,9 +78,9 @@ function DivisionRanking({ division, kind }: { division: Division; kind: Kind })
                     <td className="sticky grade"><b>{student.rank}위</b></td>
                     <td className="sticky name">{student.name}</td>
                     <td data-label="학년">{student.grade}</td>
-                    <td data-label={`${label} 점수`}><span><b>{student.points}점</b> <span className="muted">{student.count}건</span></span></td>
+                    <td data-label={`${label} 점수`}><span><b>{student.points}점</b> <span className="muted">{student.count}건{student.adjustment ? ` · 정산 ${student.adjustment > 0 ? "+" : ""}${student.adjustment}` : ""}</span></span></td>
                     <td data-label="가장 많이 받은 항목" className="rank-top-cell">
-                      {top ? <span>{top.name} <span className="muted">{top.points}점 · {percent(top.points, student.points)}%</span></span> : "-"}
+                      {top ? <span>{top.name} <span className="muted">{top.points}점 · {percent(top.points, student.points - student.adjustment)}%</span></span> : "-"}
                     </td>
                     <td className="stat-cards-toggle">{isOpen ? "닫기" : "항목 보기"}</td>
                   </tr>
@@ -140,7 +140,7 @@ export default function StudentPointRankings() {
         <div>
           <p className="eyebrow">STUDENT RANKING</p>
           <h2>학생 순위</h2>
-          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 초저(G1~G3)·초고(G4~G6)·중등(G7~G12)은 따로 순위를 매깁니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 희월 정산·조정은 빼고 셉니다.</p>
+          <p className="muted">이번 학기 {label} 점수가 높은 순서입니다. 초저(G1~G3)·초고(G4~G6)·중등(G7~G12)은 따로 순위를 매깁니다. 학생을 누르면 어떤 항목으로 받았는지 막대그래프로 볼 수 있습니다. 점수는 희월 정산·조정까지 반영한 현재 점수이고, 항목별 막대는 매일 받은 기록만으로 그립니다.</p>
         </div>
       </div>
 
