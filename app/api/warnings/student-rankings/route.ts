@@ -27,10 +27,9 @@ export async function GET(req: Request) {
   const entriesRes = await selectAll<StudentRankingEntry>((from, to) =>
     supabase
       .from("warning_entries")
-      .select("student_id,kind,category,custom_category_label,delta")
+      .select("student_id,entry_type,kind,category,custom_category_label,delta")
       .eq("academic_year", year)
       .eq("semester", semester)
-      .eq("entry_type", "daily")
       .order("id")
       .range(from, to),
   );
