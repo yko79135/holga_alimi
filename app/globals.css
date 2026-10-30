@@ -831,11 +831,22 @@ h3 {
   margin-top: 14px;
   flex-wrap: wrap;
 }
-.attachment-picker input[type="file"] {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
+.attachment-dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 12px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: 14px;
+  color: var(--teal-800);
+}
+.attachment-dropzone.dragging {
+  border-color: var(--teal-800);
+  background: var(--blue-100);
 }
 .attachment-note {
   margin: 6px 0 0;
