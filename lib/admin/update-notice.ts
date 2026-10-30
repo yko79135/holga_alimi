@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MAX_NOTICE_ATTACHMENTS, NOTICE_BUCKET, validatePdf } from "@/lib/notice-security";
+import { MAX_NOTICE_ATTACHMENTS, NOTICE_BUCKET, validateAttachment } from "@/lib/notice-security";
 
 export type NoticeAttachmentInput = { storagePath: string; originalFilename: string; mimeType: string; sizeBytes: number };
 
@@ -59,11 +59,11 @@ export async function updateNotice(input: UpdateNoticeInput) {
 
   const incoming = input.attachments || [];
   const keptCount = existingRows.length - removeIds.length;
-  if (keptCount + incoming.length > MAX_NOTICE_ATTACHMENTS) throw new NoticeUpdateError(`PDF는 최대 ${MAX_NOTICE_ATTACHMENTS}개까지 첨부할 수 있습니다.`);
+  if (keptCount + incoming.length > MAX_NOTICE_ATTACHMENTS) throw new NoticeUpdateError(`첨부파일은 최대 ${MAX_NOTICE_ATTACHMENTS}개까지 올릴 수 있습니다.`);
 
   const newRows = [];
   for (const file of incoming) {
-    const valid = validatePdf({ originalFilename: file.originalFilename, mimeType: file.mimeType, sizeBytes: Number(file.sizeBytes) });
+    const valid = validateAttachment({ originalFilename: file.originalFilename, mimeType: file.mimeType, sizeBytes: Number(file.sizeBytes) });
     if (!valid.ok) throw new NoticeUpdateError(valid.error);
     const storagePath = String(file.storagePath || "");
     // 업로드 URL은 자기 폴더에만 내준다. 남의 경로를 붙여 넣어 남의 파일을 공지에 다는 것을 막는다.

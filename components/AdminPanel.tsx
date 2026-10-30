@@ -603,7 +603,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             <h2>데이터 백업</h2>
           </div>
         </div>
-        <p className="muted">학생, 학부모 연결, 공지, 훈계·칭찬 점수, 출결 내역 등 핵심 데이터를 JSON 파일 하나로 내려받습니다. 공지에 첨부된 PDF 원본은 포함되지 않고, 첨부파일 정보(파일명 등)만 포함됩니다. 민감한 개인정보가 포함되므로 다운로드한 파일은 안전하게 보관하세요.</p>
+        <p className="muted">학생, 학부모 연결, 공지, 훈계·칭찬 점수, 출결 내역 등 핵심 데이터를 JSON 파일 하나로 내려받습니다. 공지에 첨부된 PDF·이미지 원본은 포함되지 않고, 첨부파일 정보(파일명 등)만 포함됩니다. 민감한 개인정보가 포함되므로 다운로드한 파일은 안전하게 보관하세요.</p>
         <a className="secondary" href="/api/admin/data-export">백업 파일 다운로드</a>
         <h3 className="backup-subheading">자동 백업</h3>
         <p className="muted">같은 내용이 매일 새벽 3시(한국 시간)에 자동으로 저장됩니다. 아래에서 지난 날짜의 백업을 내려받을 수 있습니다.</p>
@@ -634,7 +634,7 @@ export default function AdminPanel({ userId, onChanged }: { userId: string; onCh
             <dl className="reset-target-details">
               <div><dt>이름</dt><dd>{deleteTarget.fullName || "이름 없음"}</dd></div><div><dt>이메일</dt><dd>{deleteTarget.email}</dd></div><div><dt>권한</dt><dd>{deleteTarget.role ? roleLabels[deleteTarget.role] : "권한 없음"}</dd></div><div><dt>상태</dt><dd>{statusLabels[deleteTarget.status]}</dd></div>
             </dl>
-            <p className="destructive-warning">이 작업은 되돌릴 수 없습니다. 학부모 계정의 학생 연결, 확인 기록, 푸시 구독이 함께 삭제됩니다. 교사/관리자가 만든 과거 공지와 PDF는 보존됩니다.</p>
+            <p className="destructive-warning">이 작업은 되돌릴 수 없습니다. 학부모 계정의 학생 연결, 확인 기록, 푸시 구독이 함께 삭제됩니다. 교사/관리자가 만든 과거 공지와 첨부파일은 보존됩니다.</p>
             <label htmlFor="delete-account-confirm">대상 이메일을 정확히 입력하세요.</label>
             <input id="delete-account-confirm" type="email" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} autoFocus />
             {deleteFeedback && <p role="alert" className={deleteFeedback.type === "success" ? "success-message" : "form-error"}>{deleteFeedback.text}</p>}

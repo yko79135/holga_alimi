@@ -15,8 +15,9 @@ import AttendanceStats from "@/components/attendance/AttendanceStats";
 import AcademicCalendarUpload from "@/components/attendance/AcademicCalendarUpload";
 import EarlyDismissalManager from "@/components/early-dismissal/EarlyDismissalManager";
 import NoticeAttachmentPicker from "@/components/notices/NoticeAttachmentPicker";
+import NoticeAttachmentList from "@/components/notices/NoticeAttachmentList";
 import { uploadNoticeAttachments } from "@/lib/notice-attachment-upload";
-import { formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
+import { MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 import { compareGrades, compareStudentNames, sortGrades } from "@/lib/grade-sort";
 import { REQUEST_TYPES_TAB_LABEL } from "@/lib/early-dismissal/types";
 import { linkify } from "@/lib/linkify";
@@ -33,7 +34,7 @@ type Notice = {
   notice_attachments?: Attachment[];
 };
 
-type Attachment = { id: string; original_filename: string; size_bytes: number };
+type Attachment = { id: string; original_filename: string; size_bytes: number; mime_type?: string | null };
 type Feedback = { type: "success" | "error"; text: string };
 type StudentPreview = { name: string; grade: string; parentLinkCount: number; individualNoticeCount: number };
 
@@ -106,7 +107,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
 
   const loadNotices = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_audience,target_grade,requires_confirmation,published_at,created_by,source_type,edited_at,notice_attachments(id,original_filename,size_bytes),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
+    const { data } = await supabase.from("notices").select(`id,type,title,body,custom_type_label,target_scope,target_audience,target_grade,requires_confirmation,published_at,created_by,source_type,edited_at,notice_attachments(id,original_filename,size_bytes,mime_type),notice_students(students(name,grade)),acknowledgements(read_at,confirmed_at,parent_reply,profiles(full_name))`).order("published_at", { ascending:false });
     setNotices((data || []) as unknown as Notice[]);
   }, []);
 
@@ -306,7 +307,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
     if (form.targetScope === "grade" && !form.targetGrade) return setErrorMessage("대상 학년을 선택해주세요.");
     if (form.targetScope === "student" && !form.studentIds.length) return setErrorMessage("대상 학생을 선택해주세요.");
     if (form.type === CUSTOM_NOTICE_TYPE && !form.customTypeLabel.trim()) return setErrorMessage("알림 종류를 직접 입력해주세요.");
-    if (files.length > MAX_NOTICE_ATTACHMENTS) return setErrorMessage("PDF는 최대 5개까지 첨부할 수 있습니다.");
+    if (files.length > MAX_NOTICE_ATTACHMENTS) return setErrorMessage(`첨부파일은 최대 ${MAX_NOTICE_ATTACHMENTS}개까지 올릴 수 있습니다.`);
     setLoading(true);
     try {
       const attachments = await uploadNoticeAttachments(files);
@@ -549,7 +550,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
           <label>내용</label><textarea className="tall" value={form.body} onChange={(e) => setForm({...form,body:e.target.value})} required placeholder={`${composeAudienceWord}에게 전달할 내용을 작성하세요.\n\n주소를 그대로 붙여넣으면 링크가 됩니다. 예) https://holyguide.kr/notice`} />
           <p className="field-hint">본문에 적은 주소(https://... 또는 www....)는 받는 사람 화면에서 눌러서 바로 열 수 있는 링크로 보입니다.</p>
 
-          <label>PDF 첨부 (최대 {MAX_NOTICE_ATTACHMENTS}개, 각 20MB 이하)</label>
+          <label>PDF·이미지 첨부 (최대 {MAX_NOTICE_ATTACHMENTS}개, 각 20MB 이하)</label>
           <NoticeAttachmentPicker files={files} onChange={setFiles} disabled={loading} />
           <button className="primary" disabled={loading}>{loading ? "발송 중..." : "알림 발송"}</button>
           {message && <p role="status" className="success-message">{message}</p>}
@@ -596,7 +597,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                   {reachesParents ? <div className="ack-summary"><b>{acks.filter((a) => a.confirmed_at).length}</b><span>확인 완료</span></div> : <div className="ack-summary"><b>교사</b><span>대상 알림</span></div>}
                 </div>
                 <p className={isExpanded ? "sent-preview expanded" : "sent-preview"}>{linkify(notice.body)}</p>
-                {!!notice.notice_attachments?.length && <div className="attachment-list">{notice.notice_attachments.map((att) => <div className="attachment-item" key={att.id}><span>📎 {att.original_filename} · {formatBytes(att.size_bytes)}</span><a className="secondary" href={`/api/attachments/${att.id}`} target="_blank">미리보기</a><a className="secondary" href={`/api/attachments/${att.id}?download=1`}>다운로드</a></div>)}</div>}
+                {!!notice.notice_attachments?.length && <NoticeAttachmentList attachments={notice.notice_attachments} />}
                 <div className="sent-card-actions">
                   <button type="button" className="secondary" onClick={toggleExpanded}>{isExpanded ? "세부내역 닫기" : "세부내역 보기"}</button>
                   {/* 점수·출석 알림은 점수 기록에서 문구를 다시 만들어 덮어쓰므로 본문을 통째로 고칠 수 없다.
@@ -633,7 +634,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
                     <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required />
                     <label>내용</label>
                     <textarea className="tall" value={editForm.body} onChange={(e) => setEditForm({ ...editForm, body: e.target.value })} required />
-                    <label>PDF 첨부 (최대 {MAX_NOTICE_ATTACHMENTS}개, 각 20MB 이하)</label>
+                    <label>PDF·이미지 첨부 (최대 {MAX_NOTICE_ATTACHMENTS}개, 각 20MB 이하)</label>
                     <NoticeAttachmentPicker
                       files={editFiles}
                       onChange={setEditFiles}
@@ -737,7 +738,7 @@ export default function StaffDashboard({ userId, role, tab, onTabChange }: { use
             <p className="eyebrow">PERMANENT DELETE</p>
             <h2 id="delete-modal-title">영구 삭제 확인</h2>
             {noticeDeleteTarget && <dl className="reset-target-details">
-              <div><dt>공지 종류</dt><dd>{noticeTypeLabel(noticeDeleteTarget)}</dd></div><div><dt>제목</dt><dd>{noticeDeleteTarget.title}</dd></div><div><dt>대상</dt><dd>{targetText(noticeDeleteTarget)}</dd></div><div><dt>발송일</dt><dd>{new Date(noticeDeleteTarget.published_at).toLocaleString("ko-KR")}</dd></div><div><dt>PDF</dt><dd>{noticeDeleteTarget.notice_attachments?.length || 0}개</dd></div>
+              <div><dt>공지 종류</dt><dd>{noticeTypeLabel(noticeDeleteTarget)}</dd></div><div><dt>제목</dt><dd>{noticeDeleteTarget.title}</dd></div><div><dt>대상</dt><dd>{targetText(noticeDeleteTarget)}</dd></div><div><dt>발송일</dt><dd>{new Date(noticeDeleteTarget.published_at).toLocaleString("ko-KR")}</dd></div><div><dt>첨부파일</dt><dd>{noticeDeleteTarget.notice_attachments?.length || 0}개</dd></div>
             </dl>}
             {studentDeleteTarget && <dl className="reset-target-details">
               <div><dt>학생</dt><dd>{studentPreview?.name || studentDeleteTarget.name}</dd></div><div><dt>학년</dt><dd>{studentPreview?.grade || studentDeleteTarget.grade}</dd></div><div><dt>학부모 연결</dt><dd>{studentPreview ? `${studentPreview.parentLinkCount}개` : "확인 중..."}</dd></div><div><dt>개별 공지</dt><dd>{studentPreview ? `${studentPreview.individualNoticeCount}개` : "확인 중..."}</dd></div>

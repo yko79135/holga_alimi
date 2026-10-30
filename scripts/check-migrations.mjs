@@ -123,6 +123,9 @@ const PROBES = {
   "20261021_praise_split_homework_activity.sql":
     `not exists (select 1 from public.warning_entries where category='과제·활동 성실 수행')
      and exists (select 1 from public.point_categories where kind='praise' and name='활동 성실히 수행')`,
+  "20261030_notice_image_attachments.sql":
+    `exists (select 1 from pg_constraint where conrelid='public.notice_attachments'::regclass and conname='notice_attachment_type')
+      and exists (select 1 from storage.buckets where id='notice-attachments' and 'image/jpeg' = any(allowed_mime_types))`,
 };
 
 // schema.sql과 bootstrap-admin.sql은 최초 설치용이라 대조 대상이 아니다.

@@ -8,7 +8,7 @@ import { isTestRowVisible } from "@/lib/test-data";
  * operational/ephemeral tables that aren't worth backing up: push_subscriptions (device tokens
  * that go stale on their own), parent_dashboard_events (a transient realtime queue), and
  * signup_invites/signup_invite_redemptions (onboarding tokens, not institutional records).
- * Note: this exports table rows only -- PDF files in the notice-attachments Storage bucket are
+ * Note: this exports table rows only -- PDF and image files in the notice-attachments Storage bucket are
  * not included, only their metadata (notice_attachments rows). */
 export const EXPORT_TABLES = [
   "profiles",

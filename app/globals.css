@@ -1015,6 +1015,17 @@ h3 {
 .attachment-item a {
   text-decoration: none;
 }
+.attachment-image {
+  display: block;
+  flex-basis: 100%;
+}
+.attachment-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  border-radius: var(--radius-md);
+}
 .account-actions {
   display: flex;
   justify-content: flex-end;
