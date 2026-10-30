@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { ATTACHMENT_ACCEPT, formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
+import { ATTACHMENT_ACCEPT, ATTACHMENT_TYPES, formatBytes, MAX_NOTICE_ATTACHMENTS } from "@/lib/notice-security";
 
 // 같은 파일을 또 골랐는지 판단한다. 브라우저는 고를 때마다 File 객체를 새로 만들기 때문에
 // 객체끼리 비교할 수 없고 이름·크기·수정시각을 본다.
@@ -22,14 +22,28 @@ type Props = {
 
 export default function NoticeAttachmentPicker({ files, onChange, existing = [], removedExistingIds = [], onToggleExisting, disabled }: Props) {
   const [note, setNote] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 파일을 상자 밖에 잘못 놓으면 브라우저가 그 파일(특히 이미지)을 열어 버려 쓰던 알림이 날아간다.
+  // 이 상자가 화면에 있는 동안은 페이지 아무 곳에 놓아도 열리지 않게 막는다.
+  useEffect(() => {
+    const block = (event: DragEvent) => { if (event.dataTransfer?.types.includes("Files")) event.preventDefault(); };
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => { window.removeEventListener("dragover", block); window.removeEventListener("drop", block); };
+  }, []);
   const keptExisting = existing.filter((attachment) => !removedExistingIds.includes(attachment.id));
   const total = keptExisting.length + files.length;
 
   // 파일 선택 창은 한 번에 한 폴더 안의 파일만 고를 수 있다. 그래서 고른 목록을 갈아끼우지 않고
-  // 이어붙인다 — 폴더를 옮겨 가며 여러 번 골라도 앞서 고른 파일이 사라지지 않는다.
+  // 이어붙인다 — 폴더를 옮겨 가며 여러 번 고르거나 끌어다 놓아도 앞서 고른 파일이 사라지지 않는다.
   function addFiles(selected: FileList | null) {
-    const incoming = Array.from(selected || []);
-    if (!incoming.length) return;
+    const all = Array.from(selected || []);
+    if (!all.length) return;
+    // 끌어다 놓기는 accept를 거치지 않으므로 여기서 형식을 거른다.
+    const incoming = all.filter((file) => file.type in ATTACHMENT_TYPES);
+    const unsupported = all.length - incoming.length;
     const seen = new Set(files.map(attachmentKey));
     const fresh: File[] = [];
     let duplicates = 0;
@@ -45,6 +59,7 @@ export default function NoticeAttachmentPicker({ files, onChange, existing = [],
     if (accepted.length) onChange([...files, ...accepted]);
     // 조용히 빠뜨리지 않는다. 첨부가 말없이 사라지는 것이 원래 문제였다.
     const notes = [];
+    if (unsupported) notes.push(`PDF·이미지(JPG, PNG, GIF, WEBP)가 아닌 파일 ${unsupported}개는 넣지 않았습니다.`);
     if (duplicates) notes.push(`이미 고른 파일 ${duplicates}개는 건너뛰었습니다.`);
     if (overflow) notes.push(`최대 ${MAX_NOTICE_ATTACHMENTS}개까지만 첨부할 수 있어 ${overflow}개는 넣지 못했습니다.`);
     setNote(notes.join(" "));
@@ -54,16 +69,27 @@ export default function NoticeAttachmentPicker({ files, onChange, existing = [],
 
   return (
     <div className="attachment-picker">
-      <input
-        type="file"
-        accept={ATTACHMENT_ACCEPT}
-        multiple
-        disabled={disabled}
-        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
-      />
+      <div
+        className={dragging ? "attachment-dropzone dragging" : "attachment-dropzone"}
+        onDragOver={(e) => { if (disabled) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); if (!disabled) addFiles(e.dataTransfer.files); }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ATTACHMENT_ACCEPT}
+          multiple
+          hidden
+          disabled={disabled}
+          onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+        />
+        <button type="button" className="secondary" disabled={disabled || overflowed} onClick={() => inputRef.current?.click()}>파일 선택</button>
+        <span>또는 여기로 파일을 끌어다 놓으세요</span>
+      </div>
       <p className="field-hint">
-        파일 선택 창은 한 번에 한 폴더 안의 파일만 고를 수 있습니다. 파일이 여러 폴더에 흩어져 있으면 나눠서 고르세요 —
-        먼저 고른 파일은 지워지지 않고 아래 목록에 계속 쌓입니다. 아래 목록에 있는 파일만 발송됩니다.
+        여러 폴더의 파일을 보내려면 폴더마다 나눠서 고르거나 끌어다 놓으세요 — 먼저 넣은 파일은 지워지지 않고
+        아래 목록에 계속 쌓입니다. 아래 목록에 있는 파일만 발송됩니다.
       </p>
       {(keptExisting.length > 0 || removedExistingIds.length > 0 || files.length > 0) && (
         <div className="attachment-list">
