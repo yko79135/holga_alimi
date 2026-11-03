@@ -17,9 +17,6 @@ const KIND_META: Record<PointKind, { eyebrow: string; label: string; graceLabel:
 export default function WarningManager({ role, kind: fixedKind }: { role: string; kind?: PointKind }) {
   const [kind, setKind] = useState<PointKind>(fixedKind || "discipline");
   const meta = KIND_META[kind];
-  // 은혜의 희월은 "점수 통계"의 희월 정산(칭찬 20점 → 희월 1점)으로만 적용한다. 여기서 숫자를 직접 바꾸면
-  // 칭찬 점수 차감 없이 훈계 점수만 줄어 정산 규칙을 우회하게 되므로, 훈계 정정 표에서는 표시만 한다.
-  const graceEditable = kind !== "discipline";
   const [year, setYear] = useState(now.getFullYear());
   const [semester, setSemester] = useState<number>(defaultSemester());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -156,7 +153,7 @@ export default function WarningManager({ role, kind: fixedKind }: { role: string
         <div>
           <p className="eyebrow">{meta.eyebrow}</p>
           <h2>정정</h2>
-          <p className="muted">{graceEditable ? <>날짜별 {meta.label}를 정정하거나 {meta.graceLabel}을 조정할 때 사용합니다.</> : <>날짜별 {meta.label}를 정정할 때 사용합니다. {meta.graceLabel}은 표시만 되며, 적용은 &quot;점수 통계&quot; 탭의 희월 정산에서 해 주세요.</>} 새로운 점수 부여는 &quot;훈계 점수&quot;/&quot;칭찬 점수&quot; 탭을 이용해 주세요.</p>
+          <p className="muted">날짜별 {meta.label}를 정정할 때 사용합니다. {meta.graceLabel} 칸은 희월 정산 결과를 보여 주기만 하며, 희월 적용은 &quot;점수 통계&quot; 탭의 희월 정산에서 해 주세요. 새로운 점수 부여는 &quot;훈계 점수&quot;/&quot;칭찬 점수&quot; 탭을 이용해 주세요.</p>
         </div>
         <span className="pill">미저장 {dirty.length}건</span>
       </div>
@@ -210,8 +207,10 @@ export default function WarningManager({ role, kind: fixedKind }: { role: string
                     </td>
                   );
                 })}
-                <td className={graceEditable ? undefined : "warning-grace-readonly"}>
-                  {graceEditable ? <input aria-label={`${r.name} ${meta.graceLabel}`} type="number" className={dirty.includes(key(r.id, "grace")) ? "unsaved" : ""} value={val(r, "grace")} onChange={(e) => setDraft((o) => ({ ...o, [key(r.id, "grace")]: Number(e.target.value || 0) }))} /> : <span title="희월은 점수 통계 탭의 희월 정산에서만 적용할 수 있습니다.">{base(r, "grace")}</span>}
+                {/* 은혜의 희월·칭찬 조정은 "점수 통계"의 희월 정산(칭찬 20점 → 희월 1점)으로만 바뀐다. 여기서 숫자를
+                    직접 바꾸면 정산 규칙을 우회하게 되므로 표시만 한다. */}
+                <td className="warning-grace-readonly">
+                  <span title="희월은 점수 통계 탭의 희월 정산에서만 적용할 수 있습니다.">{base(r, "grace")}</span>
                 </td>
                 <td><b>{dates.reduce((s, d) => s + val(r, d), 0) + val(r, "grace")}</b></td>
                 <td>{r.semesterTotal}</td>
