@@ -101,6 +101,9 @@ export async function POST(req: Request) {
     if (!change.studentId || !["daily", "grace_adjustment"].includes(change.entryType) || !Number.isFinite(Number(change.previousValue)) || !Number.isFinite(Number(change.newValue))) {
       return NextResponse.json({ error: "저장할 변경사항을 확인해주세요." }, { status: 400 });
     }
+    if (change.entryType === "grace_adjustment") {
+      return NextResponse.json({ error: "은혜의 희월은 점수 통계 탭의 희월 정산에서만 적용할 수 있습니다." }, { status: 400 });
+    }
     if (change.entryType === "daily" && !isDateOnly(change.date)) {
       return NextResponse.json({ error: "훈계 점수 날짜 형식을 확인해주세요." }, { status: 400 });
     }

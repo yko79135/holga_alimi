@@ -1591,6 +1591,11 @@ h3 {
   background: #fff7eb;
   box-shadow: 0 0 0 2px rgba(193, 122, 61, 0.16);
 }
+.warning-grid td.warning-grace-readonly {
+  min-width: 70px;
+  color: var(--teal-900);
+  font-weight: 700;
+}
 .attendance-grid select {
   width: 64px;
   min-height: 38px;
