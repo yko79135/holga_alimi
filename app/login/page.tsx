@@ -1,18 +1,17 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import LoginForm from "@/components/LoginForm";
 
+// The login page is the only page anyone can see without an account, so for now it shows
+// nothing that names the school: no logo, no school name, a plain tab title.
+export const metadata: Metadata = {
+  title: "로그인",
+  description: null,
+};
+
 export default function LoginPage() {
   return (
-    <main className="login-shell">
-      <div className="login-copy">
-        <span className="pill inverted">안전한 개별 소통</span>
-        <h2>
-          홀리가이드
-          <br />
-          기독학교 포털
-        </h2>
-        <p>가정통신문, 학교 공지, 개별 훈계 점수 공지, 등</p>
-      </div>
+    <main className="login-plain">
       <Suspense fallback={null}>
         <LoginForm />
       </Suspense>
