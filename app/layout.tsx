@@ -14,19 +14,9 @@ export const metadata: Metadata = {
   // Next only emits the generic mobile-web-app-capable tag; older iOS needs the apple- one to
   // open the home-screen icon as an app (no address bar) when it doesn't read the manifest.
   other: { "apple-mobile-web-app-capable": "yes" },
+  // No tab favicon on purpose: the school logo is not shown in browser tabs.
+  // The home-screen (apple / manifest) icons below are unaffected.
   icons: {
-    icon: [
-      {
-        url: "/icons/holy-guide-192.png",
-        sizes: "192x192",
-        type: "image/png",
-      },
-      {
-        url: "/icons/holy-guide-512.png",
-        sizes: "512x512",
-        type: "image/png",
-      },
-    ],
     apple: [
       {
         url: "/apple-touch-icon.png",
