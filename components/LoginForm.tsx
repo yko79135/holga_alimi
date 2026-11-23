@@ -92,7 +92,6 @@ export default function LoginForm() {
       <button className="primary wide" disabled={loading}>
         {loading ? "로그인 중..." : "로그인"}
       </button>
-      <p className="login-help">계정 발급 또는 비밀번호 문의는 학교로 연락해주세요.</p>
     </form>
   );
 }
