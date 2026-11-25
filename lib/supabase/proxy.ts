@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicConfig } from "./config";
+import { isKnownDevice, isLegacyHost, legacySignedOutResponse, markKnownDevice } from "./legacy-host";
 
 /** True when a request carries the payload of a Supabase auth email link (PKCE `code`, a
  * `token_hash` + `type` pair, or a GoTrue error). */
@@ -9,6 +10,20 @@ function carriesAuthLinkPayload(params: URLSearchParams) {
 }
 
 export async function updateSession(request: NextRequest) {
+  // The old address (holga-alimi2) only answers people already using the app there; see
+  // legacy-host.ts. Checked before anything else so a stranger never even sees the login page.
+  if (isLegacyHost(request)) {
+    const knownDevice = isKnownDevice(request);
+    const { response, signedIn } = await handleSession(request);
+    if (signedIn) return markKnownDevice(response);
+    const isAuthLink = carriesAuthLinkPayload(request.nextUrl.searchParams);
+    if (isAuthLink) return response;
+    return legacySignedOutResponse(request, knownDevice);
+  }
+  return (await handleSession(request)).response;
+}
+
+async function handleSession(request: NextRequest): Promise<{ response: NextResponse; signedIn: boolean }> {
   // Supabase only honours `emailRedirectTo` when the exact URL is in the project's Redirect URLs
   // allowlist; with an empty allowlist it falls back to the Site URL, so the confirmation link
   // lands on "/" (which redirects to /dashboard and drops the query) instead of /auth/callback and
@@ -25,7 +40,7 @@ export async function updateSession(request: NextRequest) {
     if (!callbackUrl.searchParams.has("next")) {
       callbackUrl.searchParams.set("next", request.nextUrl.pathname === "/" ? "/account" : request.nextUrl.pathname);
     }
-    return NextResponse.redirect(callbackUrl);
+    return { response: NextResponse.redirect(callbackUrl), signedIn: false };
   }
 
   let response = NextResponse.next({ request });
@@ -34,7 +49,7 @@ export async function updateSession(request: NextRequest) {
   try {
     supabaseConfig = getSupabasePublicConfig();
   } catch {
-    return response;
+    return { response, signedIn: false };
   }
 
   const { url, key } = supabaseConfig;
@@ -64,14 +79,14 @@ export async function updateSession(request: NextRequest) {
     // Preserve where the request was headed (e.g. a push notification's ?view=parent&notice=<id>
     // deep link) so the login form can send the user straight there instead of a bare dashboard.
     loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(loginUrl);
+    return { response: NextResponse.redirect(loginUrl), signedIn: false };
   }
 
   if (data.user && (pathname === "/login" || pathname.startsWith("/signup"))) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/dashboard";
-    return NextResponse.redirect(dashboardUrl);
+    return { response: NextResponse.redirect(dashboardUrl), signedIn: true };
   }
 
-  return response;
+  return { response, signedIn: Boolean(data.user) };
 }

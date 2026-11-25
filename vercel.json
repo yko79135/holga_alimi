@@ -9,18 +9,5 @@
       "path": "/api/cron/daily-backup",
       "schedule": "0 18 * * *"
     }
-  ],
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "holga-alimi2.vercel.app"
-        }
-      ],
-      "destination": "https://stonelantern.vercel.app/:path*",
-      "permanent": true
-    }
   ]
 }
