@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicConfig } from "./config";
-import { isKnownDevice, isLegacyHost, legacySignedOutResponse, markKnownDevice } from "./legacy-host";
+import { isLegacyHost, legacySignedOutResponse } from "./legacy-host";
 
 /** True when a request carries the payload of a Supabase auth email link (PKCE `code`, a
  * `token_hash` + `type` pair, or a GoTrue error). */
@@ -10,15 +10,14 @@ function carriesAuthLinkPayload(params: URLSearchParams) {
 }
 
 export async function updateSession(request: NextRequest) {
-  // The old address (holga-alimi2) only answers people already using the app there; see
-  // legacy-host.ts. Checked before anything else so a stranger never even sees the login page.
+  // The old address (holga-alimi2) keeps serving people signed in there and sends everyone else
+  // to the new address; see legacy-host.ts.
   if (isLegacyHost(request)) {
-    const knownDevice = isKnownDevice(request);
     const { response, signedIn } = await handleSession(request);
-    if (signedIn) return markKnownDevice(response);
+    if (signedIn) return response;
     const isAuthLink = carriesAuthLinkPayload(request.nextUrl.searchParams);
     if (isAuthLink) return response;
-    return legacySignedOutResponse(request, knownDevice);
+    return legacySignedOutResponse(request);
   }
   return (await handleSession(request)).response;
 }
